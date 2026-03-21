@@ -10,7 +10,7 @@ import type {
 import { fetchJson } from './http';
 import { startPolling, type PollingTask } from './polling';
 
-const API_BASE = '/live_json';
+const API_BASE = 'https://rm-static.djicdn.com/live_json';
 
 export const endpoints = {
   liveGameInfo: `${API_BASE}/live_game_info.json`,
