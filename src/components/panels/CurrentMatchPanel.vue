@@ -25,6 +25,15 @@ const emit = defineEmits<{
 const zonePayload = computed(() => resolvePayloadByZone(props.payload, props.selectedZoneId, props.selectedZoneName));
 const current = computed(() => toMatchView(zonePayload.value?.currentMatch));
 const next = computed(() => toMatchView(zonePayload.value?.nextMatch));
+const nextTeamsLabel = computed(() => {
+  if (!next.value) {
+    return '';
+  }
+
+  const red = next.value.redTeam.teamName || '-';
+  const blue = next.value.blueTeam.teamName || '-';
+  return `${red} VS ${blue}`;
+});
 
 function onSelectTeam(teamName: string) {
   emit('teamSelect', teamName);
@@ -68,7 +77,10 @@ const liveStateTag = computed(() => {
       >
         <template #header>
           <div class="next-header">
-            <h3>{{ next ? '下一场对局' : '暂无下一场信息' }}</h3>
+            <div class="next-title-wrap">
+              <h3>{{ next ? '下一场对局' : '暂无下一场信息' }}</h3>
+              <small v-if="!props.nextExpanded && nextTeamsLabel" class="next-teams">{{ nextTeamsLabel }}</small>
+            </div>
             <Tag v-if="next" :value="next.status" severity="contrast" />
           </div>
         </template>
@@ -77,6 +89,7 @@ const liveStateTag = computed(() => {
           title="下一场对局"
           :match="next"
           :compact="true"
+          :show-header="false"
           :team-group-map="props.teamGroupMap"
           start-prefix="预计"
           @team-select="onSelectTeam"
@@ -108,9 +121,23 @@ const liveStateTag = computed(() => {
   gap: 0.5rem;
 }
 
+.next-title-wrap {
+  min-width: 0;
+}
+
 .next-header h3 {
   margin: 0;
   font-size: 0.92rem;
+}
+
+.next-teams {
+  display: block;
+  margin-top: 0.12rem;
+  font-size: 0.76rem;
+  opacity: 0.78;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .next-panel :deep(.p-panel-header) {

@@ -10,12 +10,14 @@ interface Props {
   compact?: boolean;
   hero?: boolean;
   startPrefix?: string;
+  showHeader?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   compact: false,
   hero: false,
   startPrefix: '开始',
+  showHeader: true,
 });
 
 const emit = defineEmits<{
@@ -44,7 +46,7 @@ function getScoreParts(score: string | undefined) {
 
 <template>
   <section class="block" :class="{ 'hero-block': hero, 'compact-block': compact }">
-    <header class="block-head">
+    <header v-if="showHeader" class="block-head">
       <h3>{{ match ? title : `暂无${title}` }}</h3>
       <Tag v-if="match" :value="match.status" :severity="hero ? 'info' : 'contrast'" />
     </header>
@@ -88,15 +90,17 @@ function getScoreParts(score: string | undefined) {
 
     <template v-if="match">
       <div class="meta-strip">
-        <Tag severity="secondary" :value="`阶段 ${match.stage}`" />
-        <Tag severity="secondary" :value="`场次 ${match.orderNumber}`" />
-        <Tag severity="contrast" :value="`${startPrefix} ${match.startAt}`" />
+        <Tag severity="secondary" icon="pi pi-sitemap" :value="`阶段 ${match.stage}`" />
+        <Tag severity="secondary" icon="pi pi-hashtag" :value="`场次 ${match.orderNumber}`" />
+        <Tag severity="contrast" icon="pi pi-clock" :value="`${startPrefix} ${match.startAt}`" />
       </div>
     </template>
     <template v-else>
-      <p>阶段: -</p>
-      <p>场次: -</p>
-      <p>{{ startPrefix }}: -</p>
+      <div class="meta-strip meta-strip-empty">
+        <Tag severity="secondary" icon="pi pi-sitemap" value="阶段 -" />
+        <Tag severity="secondary" icon="pi pi-hashtag" value="场次 -" />
+        <Tag severity="contrast" icon="pi pi-clock" :value="`${startPrefix} -`" />
+      </div>
     </template>
   </section>
 </template>
@@ -207,6 +211,10 @@ function getScoreParts(score: string | undefined) {
 
 .meta-strip :deep(.p-tag) {
   font-size: 0.72rem;
+}
+
+.meta-strip-empty {
+  margin-top: 0.4rem;
 }
 
 @media (max-width: 760px) {

@@ -14,6 +14,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import LivePlayer from './components/live/LivePlayer.vue';
 import CurrentMatchPanel from './components/panels/CurrentMatchPanel.vue';
 import { resolveGroupRankSectionByGroup, resolveGroupRankSectionByTeam } from './services/groupRankView';
+import { buildImageUrl } from './services/urlProxy';
 import { useRmDataStore } from './stores/rmData';
 import { useUiStore } from './stores/ui';
 
@@ -384,6 +385,12 @@ onBeforeUnmount(() => {
           >
             <div class="rank-main">
               <Tag :value="`#${row.rankDisplay}`" severity="contrast" />
+              <img
+                v-if="row.collegeLogo"
+                class="rank-team-logo"
+                :src="buildImageUrl(row.collegeLogo)"
+                :alt="`${row.teamName} logo`"
+              />
               <div class="rank-meta">
                 <strong>{{ row.teamName }}</strong>
                 <small>{{ row.collegeName }}</small>
@@ -633,6 +640,15 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.rank-team-logo {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  flex-shrink: 0;
 }
 
 .rank-meta {

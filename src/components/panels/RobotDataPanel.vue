@@ -16,7 +16,6 @@ const props = defineProps<Props>();
 
 interface RobotRow {
   team: string;
-  collegeName: string;
   robot: string;
   robotType: string;
   eaKDA: string;
@@ -60,7 +59,6 @@ function toRows(
 
   for (const team of teams) {
     const currentTeamName = String(team.name ?? '-');
-    const collegeName = String(team.collegeName ?? '-');
     const robots = (team.robots ?? []) as Record<string, unknown>[];
 
     for (const robot of robots) {
@@ -76,7 +74,6 @@ function toRows(
 
       rows.push({
         team: currentTeamName,
-        collegeName,
         robot: robotLabel,
         robotType,
         eaKDA,
@@ -141,14 +138,6 @@ function robotTypeSeverity(type: string): 'secondary' | 'success' | 'info' | 'wa
 
       <div class="table-wrap">
         <DataTable class="table" :value="rows" size="small" stripedRows showGridlines tableStyle="min-width: 46rem">
-          <Column field="team" header="队伍" style="min-width: 10rem">
-            <template #body="slotProps">
-              <div class="team-cell">
-                <strong>{{ slotProps.data.team }}</strong>
-                <small>{{ slotProps.data.collegeName }}</small>
-              </div>
-            </template>
-          </Column>
           <Column field="robot" header="机器人" style="min-width: 9rem" />
           <Column field="robotType" header="类型" style="min-width: 7rem">
             <template #body="slotProps">
@@ -182,16 +171,6 @@ function robotTypeSeverity(type: string): 'secondary' | 'success' | 'info' | 'wa
 
 .table {
   margin-top: 0.5rem;
-}
-
-.team-cell {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-}
-
-.team-cell small {
-  opacity: 0.72;
 }
 
 .table-wrap {
