@@ -1,235 +1,44 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Dialog from 'primevue/dialog';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted } from 'vue';
 import LivePlayer from './components/live/LivePlayer.vue';
 import CurrentMatchPanel from './components/panels/CurrentMatchPanel.vue';
 import MobileSchedulePanel from './components/panels/MobileSchedulePanel.vue';
 import RobotDataPanel from './components/panels/RobotDataPanel.vue';
 import SchedulePanel from './components/panels/SchedulePanel.vue';
-import { buildTeamGroupMap, extractGroupSections, type GroupSection } from './services/groupView';
-import {
-  extractLiveZones,
-  fetchLiveGameInfo,
-  pickDefaultZoneId,
-  resolveLiveStreamUrl,
-  startRmPolling,
-  type RmPollingController,
-} from './services/rmApi';
-import type { CurrentAndNextMatches, GroupsOrder, LiveGameInfo, RobotData, Schedule } from './types/api';
+import { useRmDataStore } from './stores/rmData';
+import { useUiStore } from './stores/ui';
 
-const THEME_KEY = 'rm-live-theme';
-const MOBILE_BREAKPOINT = 768;
+const dataStore = useRmDataStore();
+const uiStore = useUiStore();
 
-const isDark = ref(true);
-
-const liveGameInfo = ref<LiveGameInfo | null>(null);
-const currentAndNextMatches = ref<CurrentAndNextMatches | null>(null);
-const groupsOrder = ref<GroupsOrder | null>(null);
-const robotData = ref<RobotData | null>(null);
-const schedule = ref<Schedule | null>(null);
-
-const selectedZoneId = ref<string | null>(null);
-const selectedQualityRes = ref<string | null>(null);
-const dataDialogVisible = ref(false);
-const dataDialogTeam = ref<string | null>(null);
-
-const streamLoading = ref(true);
-const streamErrorMessage = ref('');
-const lastError = ref('');
-const lastUpdated = ref('-');
-
-let pollingController: RmPollingController | null = null;
-
-const liveZones = computed(() => extractLiveZones(liveGameInfo.value));
-
-const selectedZone = computed(() => {
-  if (!liveZones.value.length) {
-    return null;
-  }
-
-  return liveZones.value.find((zone) => zone.zoneId === selectedZoneId.value) ?? liveZones.value[0];
-});
-
-const selectedZoneName = computed(() => selectedZone.value?.zoneName ?? null);
-
-const zoneOptions = computed(() => {
-  return liveZones.value.map((item) => ({
-    label: item.liveState === 1 ? item.zoneName : `${item.zoneName}（未直播）`,
-    value: item.zoneId,
-  }));
-});
-
-const qualityOptions = computed(() => {
-  if (!selectedZone.value) {
-    return [];
-  }
-
-  return selectedZone.value.qualities.map((item) => ({
-    label: item.label,
-    value: item.res,
-  }));
-});
-
-const streamUrl = computed(() =>
-  resolveLiveStreamUrl(liveGameInfo.value, selectedZoneId.value, selectedQualityRes.value),
-);
-const canPlaySelectedZone = computed(() => (selectedZone.value?.liveState ?? 0) === 1);
-const effectiveStreamUrl = computed(() => (canPlaySelectedZone.value ? streamUrl.value : null));
-const effectiveStreamErrorMessage = computed(() => {
-  if (!canPlaySelectedZone.value && selectedZone.value) {
-    return `${selectedZone.value.zoneName} 当前未直播，请切换到直播中的站点`;
-  }
-  return streamErrorMessage.value;
-});
-const hasError = computed(() => lastError.value.length > 0);
-const isMobile = ref(false);
-
-function updateViewport() {
-  isMobile.value = window.innerWidth <= MOBILE_BREAKPOINT;
-}
-
-function updateTimestamp() {
-  lastUpdated.value = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-}
-
-function applyTheme() {
-  document.documentElement.classList.toggle('app-dark', isDark.value);
-  localStorage.setItem(THEME_KEY, isDark.value ? 'dark' : 'light');
-}
-
-function toggleTheme() {
-  isDark.value = !isDark.value;
-  applyTheme();
-}
-
-watch(
-  liveZones,
-  (zones) => {
-    if (!zones.length) {
-      selectedZoneId.value = null;
-      selectedQualityRes.value = null;
-      return;
-    }
-
-    const hasZone = zones.some((item) => item.zoneId === selectedZoneId.value);
-    if (!hasZone) {
-      selectedZoneId.value = pickDefaultZoneId(zones);
-    }
-  },
-  { immediate: true },
-);
-
-watch(
+const {
+  currentAndNextMatches,
+  robotData,
+  schedule,
   selectedZone,
-  (zone) => {
-    if (!zone) {
-      selectedQualityRes.value = null;
-      return;
-    }
+  selectedZoneId,
+  selectedQualityRes,
+  streamLoading,
+  effectiveStreamUrl,
+  effectiveStreamErrorMessage,
+  hasError,
+  lastUpdated,
+  selectedZoneName,
+  zoneOptions,
+  qualityOptions,
+  teamGroupMap,
+  groupSections,
+} = storeToRefs(dataStore);
 
-    const hasQuality = zone.qualities.some((item) => item.res === selectedQualityRes.value);
-    if (!hasQuality) {
-      selectedQualityRes.value = zone.qualities[0]?.res ?? null;
-    }
-  },
-  { immediate: true },
-);
+const { isDark, dataDialogVisible, dataDialogTeam, isMobile, nextMatchExpanded } = storeToRefs(uiStore);
 
-function onZoneChange(value: string | null) {
-  selectedZoneId.value = value;
-}
-
-function onQualityChange(value: string | null) {
-  selectedQualityRes.value = value;
-}
-
-function onOpenTeamData(teamName: string) {
-  if (!teamName || teamName === '-') {
-    return;
-  }
-
-  dataDialogTeam.value = teamName;
-  dataDialogVisible.value = true;
-}
-
-async function retryLiveStream() {
-  streamErrorMessage.value = '';
-  streamLoading.value = true;
-
-  try {
-    liveGameInfo.value = await fetchLiveGameInfo();
-    updateTimestamp();
-  } catch {
-    streamErrorMessage.value = '直播流请求失败，请检查网络后重试';
-  } finally {
-    streamLoading.value = false;
-  }
-}
-
-function startPolling() {
-  pollingController = startRmPolling({
-    onLiveGameInfo(data) {
-      liveGameInfo.value = data;
-      streamLoading.value = false;
-      streamErrorMessage.value = '';
-      lastError.value = '';
-      updateTimestamp();
-    },
-    onCurrentAndNextMatches(data) {
-      currentAndNextMatches.value = data;
-      lastError.value = '';
-      updateTimestamp();
-    },
-    onGroupsOrder(data) {
-      groupsOrder.value = data;
-      lastError.value = '';
-      updateTimestamp();
-    },
-    onRobotData(data) {
-      robotData.value = data;
-      lastError.value = '';
-      updateTimestamp();
-    },
-    onSchedule(data) {
-      schedule.value = data;
-      lastError.value = '';
-      updateTimestamp();
-    },
-    onError() {
-      lastError.value = '部分接口请求失败，正在自动重试';
-      streamLoading.value = false;
-      if (!streamUrl.value) {
-        streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
-      }
-    },
-  });
-}
-
-onMounted(() => {
-  const stored = localStorage.getItem(THEME_KEY);
-  isDark.value = stored ? stored === 'dark' : true;
-  applyTheme();
-  updateViewport();
-  window.addEventListener('resize', updateViewport);
-  startPolling();
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateViewport);
-  pollingController?.stopAll();
-});
-
-const groupSections = computed(() =>
-  extractGroupSections(groupsOrder.value, selectedZoneId.value, selectedZoneName.value),
-);
-
-const teamGroupMap = computed(() => buildTeamGroupMap(groupSections.value));
-
-const dialogTeamGroupSection = computed<GroupSection | null>(() => {
+const dialogTeamGroupSection = computed(() => {
   if (!dataDialogTeam.value) {
     return null;
   }
@@ -241,6 +50,24 @@ const dialogTeamGroupSection = computed<GroupSection | null>(() => {
   }
 
   return null;
+});
+
+const onZoneChange = dataStore.setZone;
+const onQualityChange = dataStore.setQuality;
+const retryLiveStream = dataStore.retryLiveStream;
+
+const onOpenTeamData = uiStore.openTeamData;
+const toggleTheme = uiStore.toggleTheme;
+const onNextExpandedChange = uiStore.setNextMatchExpanded;
+
+onMounted(() => {
+  uiStore.initializeUi();
+  dataStore.startPolling();
+});
+
+onBeforeUnmount(() => {
+  uiStore.teardownUi();
+  dataStore.stopPolling();
 });
 </script>
 
@@ -284,8 +111,10 @@ const dialogTeamGroupSection = computed<GroupSection | null>(() => {
         :selected-zone-id="selectedZoneId"
         :selected-zone-name="selectedZoneName"
         :selected-zone-live-state="selectedZone?.liveState ?? null"
+        :next-expanded="nextMatchExpanded"
         :team-group-map="teamGroupMap"
         @team-select="onOpenTeamData"
+        @update-next-expanded="onNextExpandedChange"
       />
     </section>
 
@@ -391,10 +220,15 @@ const dialogTeamGroupSection = computed<GroupSection | null>(() => {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr;
+  min-width: 0;
 }
 
 .match-hero {
   margin-bottom: 1rem;
+}
+
+.live-column {
+  min-width: 0;
 }
 
 .lower-grid {

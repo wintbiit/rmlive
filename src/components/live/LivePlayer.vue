@@ -2,7 +2,6 @@
 import Artplayer from 'artplayer';
 import Hls from 'hls.js';
 import Button from 'primevue/button';
-import Card from 'primevue/card';
 import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';
 import { onBeforeUnmount, ref, watch } from 'vue';
@@ -79,35 +78,32 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Card>
-    <template #title> 直播播放器 </template>
-    <template #content>
-      <div class="player-shell">
-        <div v-if="loading" class="overlay center">
-          <ProgressSpinner />
-        </div>
+  <div class="player-shell">
+    <div v-if="loading" class="overlay center">
+      <ProgressSpinner />
+    </div>
 
-        <div v-else-if="errorMessage" class="overlay center">
-          <Message severity="error" :closable="false">
-            {{ errorMessage }}
-          </Message>
-          <Button class="retry-btn" label="重试加载" size="small" @click="emit('retry')" />
-        </div>
+    <div v-else-if="errorMessage" class="overlay center">
+      <Message severity="error" :closable="false">
+        {{ errorMessage }}
+      </Message>
+      <Button class="retry-btn" label="重试加载" size="small" @click="emit('retry')" />
+    </div>
 
-        <div v-else-if="!streamUrl" class="overlay center">
-          <Message severity="warn" :closable="false"> 暂未获取到直播流地址 </Message>
-        </div>
+    <div v-else-if="!streamUrl" class="overlay center">
+      <Message severity="warn" :closable="false"> 暂未获取到直播流地址 </Message>
+    </div>
 
-        <div ref="container" class="player-container" />
-      </div>
-    </template>
-  </Card>
+    <div ref="container" class="player-container" />
+  </div>
 </template>
 
 <style scoped>
 .player-shell {
   position: relative;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 260px;
   aspect-ratio: 16 / 9;
   border-radius: 12px;
@@ -118,6 +114,7 @@ onBeforeUnmount(() => {
 .player-container {
   width: 100%;
   height: 100%;
+  min-width: 0;
 }
 
 .overlay {
@@ -126,6 +123,8 @@ onBeforeUnmount(() => {
   inset: 0;
   display: flex;
   gap: 0.75rem;
+  padding: 0.75rem;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
   flex-direction: column;
@@ -139,5 +138,25 @@ onBeforeUnmount(() => {
 
 .retry-btn {
   margin-top: 0.35rem;
+}
+
+:deep(.art-video-player),
+:deep(.art-video-player video),
+:deep(.art-video-player .art-mask),
+:deep(.art-video-player .art-player-app) {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+:deep(.p-message) {
+  max-width: calc(100% - 0.5rem);
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .player-shell {
+    min-height: 190px;
+    border-radius: 10px;
+  }
 }
 </style>
