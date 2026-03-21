@@ -11,13 +11,13 @@ import Skeleton from 'primevue/skeleton';
 import Tag from 'primevue/tag';
 import ToggleButton from 'primevue/togglebutton';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import LivePlayer from './components/live/LivePlayer.vue';
 import CurrentMatchPanel from './components/panels/CurrentMatchPanel.vue';
 import { resolveGroupRankSectionByGroup, resolveGroupRankSectionByTeam } from './services/groupRankView';
 import { buildImageUrl } from './services/urlProxy';
 import { useRmDataStore } from './stores/rmData';
 import { useUiStore } from './stores/ui';
 
+const LivePlayer = defineAsyncComponent(() => import('./components/live/LivePlayer.vue'));
 const SchedulePanel = defineAsyncComponent(() => import('./components/panels/SchedulePanel.vue'));
 const MobileSchedulePanel = defineAsyncComponent(() => import('./components/panels/MobileSchedulePanel.vue'));
 const RobotDataPanel = defineAsyncComponent(() => import('./components/panels/RobotDataPanel.vue'));

@@ -239,33 +239,39 @@ export const useRmDataStore = defineStore('rm-data', () => {
         // 失败时保持兜底展示，不影响主流程。
       });
 
-    pollingController = startRmPolling({
-      onLiveGameInfo(data) {
-        liveGameInfo.value = data;
-        ensureZoneSelection();
-        ensureQualitySelection();
-        streamLoading.value = false;
-        streamErrorMessage.value = '';
+    pollingController = startRmPolling(
+      {
+        onLiveGameInfo(data) {
+          liveGameInfo.value = data;
+          ensureZoneSelection();
+          ensureQualitySelection();
+          streamLoading.value = false;
+          streamErrorMessage.value = '';
+        },
+        onCurrentAndNextMatches(data) {
+          currentAndNextMatches.value = data;
+        },
+        onGroupsOrder(data) {
+          groupsOrder.value = data;
+        },
+        onRobotData(data) {
+          robotData.value = data;
+        },
+        onSchedule(data) {
+          schedule.value = data;
+        },
+        onError() {
+          streamLoading.value = false;
+          if (!streamUrl.value) {
+            streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
+          }
+        },
       },
-      onCurrentAndNextMatches(data) {
-        currentAndNextMatches.value = data;
+      {},
+      {
+        robotDataDelayMs: 5000,
       },
-      onGroupsOrder(data) {
-        groupsOrder.value = data;
-      },
-      onRobotData(data) {
-        robotData.value = data;
-      },
-      onSchedule(data) {
-        schedule.value = data;
-      },
-      onError() {
-        streamLoading.value = false;
-        if (!streamUrl.value) {
-          streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
-        }
-      },
-    });
+    );
   }
 
   async function retryLiveStream() {

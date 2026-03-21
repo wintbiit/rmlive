@@ -15,7 +15,6 @@
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
     "artplayer": "^5.4.0",
-    "chart.js": "^4.5.1",
     "hls.js": "^1.6.15",
     "pinia": "^3.0.4",
     "primeicons": "^7.0.0",
@@ -26,7 +25,6 @@
     "@antfu/eslint-config": "^7.7.2",
     "@types/node": "^24.12.0",
     "@vitejs/plugin-vue": "^6.0.5",
-    "@vitejs/plugin-vue-jsx": "^5.1.5",
     "@vue/tsconfig": "^0.9.0",
     "eslint": "^9.22.0",
     "eslint-config-prettier": "^10.1.1",

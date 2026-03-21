@@ -64,17 +64,27 @@ export interface RmPollingIntervals {
   scheduleMs?: number;
 }
 
+export interface RmPollingOptions {
+  robotDataDelayMs?: number;
+}
+
 export interface RmPollingController {
   stopAll: () => void;
 }
 
-export function startRmPolling(handlers: RmPollingHandlers, intervals: RmPollingIntervals = {}): RmPollingController {
+export function startRmPolling(
+  handlers: RmPollingHandlers,
+  intervals: RmPollingIntervals = {},
+  options: RmPollingOptions = {},
+): RmPollingController {
   const tasks: PollingTask[] = [];
   const pollingOptions = {
     pauseWhenHidden: true,
     hiddenCheckMs: 5000,
     resumeImmediately: true,
   };
+  let stopped = false;
+  let robotDelayTimer: ReturnType<typeof setTimeout> | null = null;
 
   const safeRun = async <T>(request: () => Promise<T>, onData: (data: T) => void) => {
     try {
@@ -108,9 +118,25 @@ export function startRmPolling(handlers: RmPollingHandlers, intervals: RmPolling
     ),
   );
 
-  tasks.push(
-    startPolling(() => safeRun(fetchRobotData, handlers.onRobotData), intervals.robotDataMs ?? 7000, pollingOptions),
-  );
+  const startRobotTask = () => {
+    if (stopped) {
+      return;
+    }
+
+    tasks.push(
+      startPolling(() => safeRun(fetchRobotData, handlers.onRobotData), intervals.robotDataMs ?? 7000, pollingOptions),
+    );
+  };
+
+  const robotDataDelayMs = Math.max(0, options.robotDataDelayMs ?? 0);
+  if (robotDataDelayMs > 0) {
+    robotDelayTimer = setTimeout(() => {
+      robotDelayTimer = null;
+      startRobotTask();
+    }, robotDataDelayMs);
+  } else {
+    startRobotTask();
+  }
 
   tasks.push(
     startPolling(() => safeRun(fetchSchedule, handlers.onSchedule), intervals.scheduleMs ?? 45000, pollingOptions),
@@ -118,6 +144,11 @@ export function startRmPolling(handlers: RmPollingHandlers, intervals: RmPolling
 
   return {
     stopAll() {
+      stopped = true;
+      if (robotDelayTimer) {
+        clearTimeout(robotDelayTimer);
+        robotDelayTimer = null;
+      }
       tasks.forEach((task) => task.stop());
     },
   };
