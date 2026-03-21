@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="RMLive share image">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <radialGradient id="halo" cx="0.2" cy="0.2" r="1">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect width="1200" height="630" fill="url(#halo)" />
+  <g transform="translate(110 140)">
+    <rect x="0" y="0" width="116" height="116" rx="26" fill="#0f172a" stroke="#60a5fa" stroke-opacity="0.5" />
+    <path d="M28 84V32h22c12 0 19 7 19 17 0 8-4 13-11 16l12 19H53L44 69h-4v15H28zm12-23h8c5 0 8-2 8-6s-3-6-8-6h-8v12z" fill="#e2e8f0" />
+    <path d="M74 84V32h12v41h24v11H74z" fill="#e2e8f0" />
+    <rect x="16" y="18" width="84" height="5" rx="2.5" fill="#f97316" />
+  </g>
+  <text x="250" y="220" font-size="64" font-weight="700" fill="#f8fafc" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
+    RMLive - Better 直播间
+  </text>
+  <text x="250" y="290" font-size="34" fill="#bfdbfe" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
+    更清晰的赛事视图，更顺滑的直播体验
+  </text>
+  <text x="250" y="355" font-size="24" fill="#cbd5e1" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
+    直播 · 当前对局 · 赛程赛果 · 比赛数据
+  </text>
+</svg>

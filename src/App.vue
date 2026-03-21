@@ -4,15 +4,17 @@ import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Dialog from 'primevue/dialog';
 import Select from 'primevue/select';
+import Skeleton from 'primevue/skeleton';
 import Tag from 'primevue/tag';
-import { computed, onBeforeUnmount, onMounted } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 import LivePlayer from './components/live/LivePlayer.vue';
 import CurrentMatchPanel from './components/panels/CurrentMatchPanel.vue';
-import MobileSchedulePanel from './components/panels/MobileSchedulePanel.vue';
-import RobotDataPanel from './components/panels/RobotDataPanel.vue';
-import SchedulePanel from './components/panels/SchedulePanel.vue';
 import { useRmDataStore } from './stores/rmData';
 import { useUiStore } from './stores/ui';
+
+const SchedulePanel = defineAsyncComponent(() => import('./components/panels/SchedulePanel.vue'));
+const MobileSchedulePanel = defineAsyncComponent(() => import('./components/panels/MobileSchedulePanel.vue'));
+const RobotDataPanel = defineAsyncComponent(() => import('./components/panels/RobotDataPanel.vue'));
 
 const dataStore = useRmDataStore();
 const uiStore = useUiStore();
@@ -59,13 +61,35 @@ const retryLiveStream = dataStore.retryLiveStream;
 const onOpenTeamData = uiStore.openTeamData;
 const toggleTheme = uiStore.toggleTheme;
 const onNextExpandedChange = uiStore.setNextMatchExpanded;
+const brandLogoUrl = `${import.meta.env.BASE_URL}rmlive-logo.svg`;
+const enableSecondaryPanels = ref(false);
+
+let deferTimer: number | null = null;
+
+function mountSecondaryPanels() {
+  enableSecondaryPanels.value = true;
+}
+
+function scheduleSecondaryPanelsMount() {
+  const idleCallback = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+  if (idleCallback) {
+    idleCallback(() => mountSecondaryPanels());
+    return;
+  }
+
+  deferTimer = window.setTimeout(() => mountSecondaryPanels(), 180);
+}
 
 onMounted(() => {
   uiStore.initializeUi();
   dataStore.startPolling();
+  scheduleSecondaryPanelsMount();
 });
 
 onBeforeUnmount(() => {
+  if (deferTimer !== null) {
+    window.clearTimeout(deferTimer);
+  }
   uiStore.teardownUi();
   dataStore.stopPolling();
 });
@@ -73,6 +97,14 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="app-shell">
+    <header class="brand-head">
+      <img :src="brandLogoUrl" alt="RMLive logo" class="brand-logo" />
+      <div>
+        <h1>RMLive - Better 直播间</h1>
+        <p>更清晰的赛事视图，更顺滑的直播体验</p>
+      </div>
+    </header>
+
     <Card class="controls-card">
       <template #content>
         <div class="controls">
@@ -130,7 +162,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="lower-grid">
-      <div class="schedule-cell">
+      <div v-if="enableSecondaryPanels" class="schedule-cell">
         <SchedulePanel
           v-if="!isMobile"
           :payload="schedule"
@@ -145,6 +177,9 @@ onBeforeUnmount(() => {
           :team-group-map="teamGroupMap"
           @team-select="onOpenTeamData"
         />
+      </div>
+      <div v-else class="schedule-placeholder">
+        <Skeleton width="100%" height="18rem" borderRadius="12px" />
       </div>
     </section>
 
@@ -168,7 +203,12 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <RobotDataPanel :payload="robotData" :selected-zone-id="selectedZoneId" :team-name="dataDialogTeam" />
+      <RobotDataPanel
+        v-if="dataDialogVisible"
+        :payload="robotData"
+        :selected-zone-id="selectedZoneId"
+        :team-name="dataDialogTeam"
+      />
     </Dialog>
   </main>
 </template>
@@ -194,6 +234,31 @@ onBeforeUnmount(() => {
   padding: 1rem;
   box-sizing: border-box;
   overflow-x: clip;
+}
+
+.brand-head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.95rem;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.brand-head h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.15;
+}
+
+.brand-head p {
+  margin: 0.18rem 0 0;
+  opacity: 0.75;
+  font-size: 0.84rem;
 }
 
 .controls-card {
@@ -236,6 +301,10 @@ onBeforeUnmount(() => {
   gap: 1rem;
   margin-top: 1rem;
   grid-template-columns: 1fr;
+}
+
+.schedule-placeholder {
+  opacity: 0.6;
 }
 
 .group-block {
@@ -309,6 +378,23 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .app-shell {
     padding: 0.65rem;
+  }
+
+  .brand-head {
+    margin-bottom: 0.75rem;
+  }
+
+  .brand-logo {
+    width: 34px;
+    height: 34px;
+  }
+
+  .brand-head h1 {
+    font-size: 1rem;
+  }
+
+  .brand-head p {
+    font-size: 0.76rem;
   }
 
   .controls {
