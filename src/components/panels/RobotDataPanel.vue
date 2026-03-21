@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import Card from 'primevue/card';
-import Chart from 'primevue/chart';
 import Column from 'primevue/column';
 import DataTable from 'primevue/datatable';
+import Tag from 'primevue/tag';
 import { computed } from 'vue';
 import type { RobotData } from '../../types/api';
 
@@ -19,7 +19,7 @@ interface RobotRow {
   collegeName: string;
   robot: string;
   robotType: string;
-  eaKDA: number;
+  eaKDA: string;
   eagHurt: number;
   eaSmallHitRate: number;
   combatScore: number;
@@ -53,27 +53,32 @@ function toRows(
     return [];
   }
 
-  const zone = zones.find((item) => String(item.id ?? '') === String(selectedZoneId ?? '')) ?? zones[0];
+  const zone = zones.find((item) => String(item.id ?? item.zoneId ?? '') === String(selectedZoneId ?? '')) ?? zones[0];
   const teams = (zone.teams ?? []) as Record<string, unknown>[];
 
   const rows: RobotRow[] = [];
 
   for (const team of teams) {
-    const teamName = String(team.name ?? '-');
+    const currentTeamName = String(team.name ?? '-');
     const collegeName = String(team.collegeName ?? '-');
     const robots = (team.robots ?? []) as Record<string, unknown>[];
 
     for (const robot of robots) {
-      const eaKDA = toNumber(robot.eaKDA);
+      const robotType = String(robot.robotType ?? robot.type ?? '-');
+      const robotNumber = toNumber(robot.robotNumber);
+      const eaKDA = typeof robot.eaKDA === 'string' ? robot.eaKDA : '-';
       const eagHurt = toNumber(robot.eagHurt);
       const eaSmallHitRate = toNumber(robot.eaSmallHitRate);
-      const combatScore = eagHurt > 0 ? eagHurt : eaKDA * 100 + eaSmallHitRate;
+      const kdaScore = toNumber(robot.eagKdaScore);
+      const combatScore = eagHurt > 0 ? eagHurt : kdaScore > 0 ? kdaScore : eaSmallHitRate;
+      const robotName = String(robot.name ?? '').trim();
+      const robotLabel = robotName || (robotNumber > 0 ? `${robotType}-${robotNumber}` : robotType);
 
       rows.push({
-        team: teamName,
+        team: currentTeamName,
         collegeName,
-        robot: String(robot.name ?? '-'),
-        robotType: String(robot.robotType ?? '-'),
+        robot: robotLabel,
+        robotType,
         eaKDA,
         eagHurt,
         eaSmallHitRate,
@@ -89,45 +94,43 @@ function toRows(
 
 const rows = computed(() => toRows(props.payload, props.selectedZoneId, props.teamName));
 
-const chartData = computed(() => {
-  const topRows = rows.value.slice(0, 10);
-  const labels = topRows.map((item) => `${item.team}-${item.robot}`);
-  const scores = topRows.map((item) => item.combatScore);
+function formatRate(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '-';
+  }
 
-  return {
-    labels,
-    datasets: [
-      {
-        label: '综合战斗值',
-        backgroundColor: '#0070f3',
-        borderColor: '#0070f3',
-        data: scores,
-      },
-    ],
-  };
-});
+  const percent = value > 0 && value <= 1 ? value * 100 : value;
+  return `${percent.toFixed(1)}%`;
+}
 
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      labels: {
-        color: '#94a3b8',
-      },
-    },
-  },
-  scales: {
-    x: {
-      ticks: { color: '#94a3b8' },
-      grid: { color: 'rgba(148, 163, 184, 0.15)' },
-    },
-    y: {
-      ticks: { color: '#94a3b8' },
-      grid: { color: 'rgba(148, 163, 184, 0.15)' },
-    },
-  },
-};
+function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '-';
+  }
+
+  return value.toLocaleString('zh-CN');
+}
+
+function robotTypeSeverity(type: string): 'secondary' | 'success' | 'info' | 'warn' | 'danger' {
+  const normalized = type.toLowerCase();
+  if (normalized.includes('hero')) {
+    return 'danger';
+  }
+
+  if (normalized.includes('infantry')) {
+    return 'success';
+  }
+
+  if (normalized.includes('sapper') || normalized.includes('engineer')) {
+    return 'info';
+  }
+
+  if (normalized.includes('guard') || normalized.includes('radar')) {
+    return 'warn';
+  }
+
+  return 'secondary';
+}
 </script>
 
 <template>
@@ -135,28 +138,35 @@ const chartOptions = {
     <template #title> 比赛数据{{ props.teamName ? ` - ${props.teamName}` : '' }} </template>
     <template #content>
       <p v-if="props.teamName" class="tip">已按队伍筛选，可在上方卡片切换查看其他队伍。</p>
-      <div class="chart-wrap">
-        <Chart type="bar" :data="chartData" :options="chartOptions" />
-      </div>
 
       <div class="table-wrap">
-        <DataTable
-          class="table"
-          :value="rows"
-          paginator
-          :rows="6"
-          size="small"
-          stripedRows
-          tableStyle="min-width: 42rem"
-        >
-          <Column field="team" header="队伍" />
-          <Column field="collegeName" header="学校" />
-          <Column field="robot" header="机器人" />
-          <Column field="robotType" header="类型" />
-          <Column field="eaKDA" header="KDA" />
-          <Column field="eagHurt" header="伤害" />
-          <Column field="eaSmallHitRate" header="命中率" />
-          <Column field="combatScore" header="综合" />
+        <DataTable class="table" :value="rows" size="small" stripedRows showGridlines tableStyle="min-width: 46rem">
+          <Column field="team" header="队伍" style="min-width: 10rem">
+            <template #body="slotProps">
+              <div class="team-cell">
+                <strong>{{ slotProps.data.team }}</strong>
+                <small>{{ slotProps.data.collegeName }}</small>
+              </div>
+            </template>
+          </Column>
+          <Column field="robot" header="机器人" style="min-width: 9rem" />
+          <Column field="robotType" header="类型" style="min-width: 7rem">
+            <template #body="slotProps">
+              <Tag :value="slotProps.data.robotType" :severity="robotTypeSeverity(slotProps.data.robotType)" rounded />
+            </template>
+          </Column>
+          <Column field="eaKDA" header="KDA" style="min-width: 6.5rem" />
+          <Column field="eagHurt" header="伤害" style="min-width: 7rem">
+            <template #body="slotProps">{{ formatNumber(slotProps.data.eagHurt) }}</template>
+          </Column>
+          <Column field="eaSmallHitRate" header="命中率" style="min-width: 6.5rem">
+            <template #body="slotProps">{{ formatRate(slotProps.data.eaSmallHitRate) }}</template>
+          </Column>
+          <Column field="combatScore" header="综合" style="min-width: 6.5rem">
+            <template #body="slotProps">
+              <Tag :value="formatNumber(slotProps.data.combatScore)" severity="info" />
+            </template>
+          </Column>
         </DataTable>
       </div>
     </template>
@@ -164,11 +174,6 @@ const chartOptions = {
 </template>
 
 <style scoped>
-.chart-wrap {
-  height: 260px;
-  margin-bottom: 1rem;
-}
-
 .tip {
   margin: 0 0 0.6rem;
   font-size: 0.84rem;
@@ -179,13 +184,17 @@ const chartOptions = {
   margin-top: 0.5rem;
 }
 
-.table-wrap {
-  overflow-x: auto;
+.team-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
 }
 
-@media (max-width: 768px) {
-  .chart-wrap {
-    height: 210px;
-  }
+.team-cell small {
+  opacity: 0.72;
+}
+
+.table-wrap {
+  overflow-x: auto;
 }
 </style>

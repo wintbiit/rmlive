@@ -3,18 +3,40 @@ import { computed, ref } from 'vue';
 import { buildTeamGroupMap, extractGroupSections } from '../services/groupView';
 import {
   extractLiveZones,
+  fetchGroupRankInfo,
   fetchLiveGameInfo,
   pickDefaultZoneId,
   resolveLiveStreamUrl,
   startRmPolling,
   type RmPollingController,
 } from '../services/rmApi';
-import type { CurrentAndNextMatches, GroupsOrder, LiveGameInfo, RobotData, Schedule } from '../types/api';
+import type {
+  CurrentAndNextMatches,
+  GroupRankInfo,
+  GroupsOrder,
+  LiveGameInfo,
+  RobotData,
+  Schedule,
+} from '../types/api';
+
+type ZoneUiState = 'live' | 'offline' | 'upcoming' | 'ended';
+
+interface ZoneOptionItem {
+  label: string;
+  value: string;
+  state: ZoneUiState;
+  icon: string;
+  liveLogo: boolean;
+  title: string;
+  dateText: string;
+  disabled: boolean;
+}
 
 export const useRmDataStore = defineStore('rm-data', () => {
   const liveGameInfo = ref<LiveGameInfo | null>(null);
   const currentAndNextMatches = ref<CurrentAndNextMatches | null>(null);
   const groupsOrder = ref<GroupsOrder | null>(null);
+  const groupRankInfo = ref<GroupRankInfo | null>(null);
   const robotData = ref<RobotData | null>(null);
   const schedule = ref<Schedule | null>(null);
 
@@ -23,8 +45,6 @@ export const useRmDataStore = defineStore('rm-data', () => {
 
   const streamLoading = ref(true);
   const streamErrorMessage = ref('');
-  const lastError = ref('');
-  const lastUpdated = ref('-');
 
   let pollingController: RmPollingController | null = null;
 
@@ -38,11 +58,95 @@ export const useRmDataStore = defineStore('rm-data', () => {
   });
   const selectedZoneName = computed(() => selectedZone.value?.zoneName ?? null);
 
-  const zoneOptions = computed(() => {
-    return liveZones.value.map((item) => ({
-      label: item.liveState === 1 ? item.zoneName : `${item.zoneName}（未直播）`,
-      value: item.zoneId,
-    }));
+  function formatDate(value: number | null): string {
+    if (!value) {
+      return '-';
+    }
+
+    const ms = value > 10_000_000_000 ? value : value * 1000;
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) {
+      return '-';
+    }
+
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function resolveZoneUiState(zone: (typeof liveZones.value)[number], nowEpoch: number): ZoneUiState {
+    if (zone.liveState === 1) {
+      return 'live';
+    }
+
+    if (zone.startAt && nowEpoch < zone.startAt) {
+      return 'upcoming';
+    }
+
+    if (zone.endAt && nowEpoch > zone.endAt) {
+      return 'ended';
+    }
+
+    return 'offline';
+  }
+
+  const zoneOptions = computed<ZoneOptionItem[]>(() => {
+    const nowEpoch = Math.floor(Date.now() / 1000);
+
+    return liveZones.value.map((item) => {
+      const state = resolveZoneUiState(item, nowEpoch);
+
+      if (state === 'live') {
+        return {
+          label: item.zoneName,
+          value: item.zoneId,
+          state,
+          icon: 'pi pi-video',
+          liveLogo: true,
+          title: item.zoneName,
+          dateText: '',
+          disabled: false,
+        };
+      }
+
+      if (state === 'offline') {
+        return {
+          label: item.zoneName,
+          value: item.zoneId,
+          state,
+          icon: 'pi pi-video-off',
+          liveLogo: false,
+          title: item.zoneName,
+          dateText: '',
+          disabled: false,
+        };
+      }
+
+      if (state === 'upcoming') {
+        return {
+          label: item.zoneName,
+          value: item.zoneId,
+          state,
+          icon: 'pi pi-clock',
+          liveLogo: false,
+          title: item.zoneName,
+          dateText: formatDate(item.startAt),
+          disabled: true,
+        };
+      }
+
+      return {
+        label: item.zoneName,
+        value: item.zoneId,
+        state,
+        icon: 'pi pi-check-circle',
+        liveLogo: false,
+        title: item.zoneName,
+        dateText: formatDate(item.endAt),
+        disabled: true,
+      };
+    });
   });
 
   const qualityOptions = computed(() => {
@@ -67,28 +171,27 @@ export const useRmDataStore = defineStore('rm-data', () => {
     }
     return streamErrorMessage.value;
   });
-  const hasError = computed(() => lastError.value.length > 0);
 
   const groupSections = computed(() =>
     extractGroupSections(groupsOrder.value, selectedZoneId.value, selectedZoneName.value),
   );
   const teamGroupMap = computed(() => buildTeamGroupMap(groupSections.value));
 
-  function updateTimestamp() {
-    lastUpdated.value = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-  }
-
   function ensureZoneSelection() {
-    const zones = liveZones.value;
-    if (!zones.length) {
+    const options = zoneOptions.value;
+    if (!options.length) {
       selectedZoneId.value = null;
       selectedQualityRes.value = null;
       return;
     }
 
-    const hasZone = zones.some((item) => item.zoneId === selectedZoneId.value);
+    const hasZone = options.some((item) => item.value === selectedZoneId.value && !item.disabled);
     if (!hasZone) {
-      selectedZoneId.value = pickDefaultZoneId(zones);
+      const zones = liveZones.value;
+      const preferred = pickDefaultZoneId(zones);
+      const preferredEnabled = preferred ? options.find((item) => item.value === preferred && !item.disabled) : null;
+      const fallbackEnabled = options.find((item) => !item.disabled);
+      selectedZoneId.value = preferredEnabled?.value ?? fallbackEnabled?.value ?? options[0].value;
     }
   }
 
@@ -106,6 +209,11 @@ export const useRmDataStore = defineStore('rm-data', () => {
   }
 
   function setZone(value: string | null) {
+    const target = zoneOptions.value.find((item) => item.value === value);
+    if (target?.disabled) {
+      return;
+    }
+
     selectedZoneId.value = value;
     ensureQualitySelection();
   }
@@ -121,6 +229,16 @@ export const useRmDataStore = defineStore('rm-data', () => {
 
   function startPolling() {
     stopPolling();
+
+    // 小组详细排名信息不需要轮询，仅在启动时拉取一次。
+    void fetchGroupRankInfo()
+      .then((data) => {
+        groupRankInfo.value = data;
+      })
+      .catch(() => {
+        // 失败时保持兜底展示，不影响主流程。
+      });
+
     pollingController = startRmPolling({
       onLiveGameInfo(data) {
         liveGameInfo.value = data;
@@ -128,31 +246,20 @@ export const useRmDataStore = defineStore('rm-data', () => {
         ensureQualitySelection();
         streamLoading.value = false;
         streamErrorMessage.value = '';
-        lastError.value = '';
-        updateTimestamp();
       },
       onCurrentAndNextMatches(data) {
         currentAndNextMatches.value = data;
-        lastError.value = '';
-        updateTimestamp();
       },
       onGroupsOrder(data) {
         groupsOrder.value = data;
-        lastError.value = '';
-        updateTimestamp();
       },
       onRobotData(data) {
         robotData.value = data;
-        lastError.value = '';
-        updateTimestamp();
       },
       onSchedule(data) {
         schedule.value = data;
-        lastError.value = '';
-        updateTimestamp();
       },
       onError() {
-        lastError.value = '部分接口请求失败，正在自动重试';
         streamLoading.value = false;
         if (!streamUrl.value) {
           streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
@@ -169,7 +276,6 @@ export const useRmDataStore = defineStore('rm-data', () => {
       liveGameInfo.value = await fetchLiveGameInfo();
       ensureZoneSelection();
       ensureQualitySelection();
-      updateTimestamp();
     } catch {
       streamErrorMessage.value = '直播流请求失败，请检查网络后重试';
     } finally {
@@ -181,14 +287,13 @@ export const useRmDataStore = defineStore('rm-data', () => {
     liveGameInfo,
     currentAndNextMatches,
     groupsOrder,
+    groupRankInfo,
     robotData,
     schedule,
     selectedZoneId,
     selectedQualityRes,
     streamLoading,
     streamErrorMessage,
-    lastError,
-    lastUpdated,
     liveZones,
     selectedZone,
     selectedZoneName,
@@ -197,7 +302,6 @@ export const useRmDataStore = defineStore('rm-data', () => {
     streamUrl,
     effectiveStreamUrl,
     effectiveStreamErrorMessage,
-    hasError,
     groupSections,
     teamGroupMap,
     setZone,

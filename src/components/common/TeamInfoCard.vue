@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Tag from 'primevue/tag';
 import { computed } from 'vue';
 import { buildImageUrl } from '../../services/urlProxy';
 
@@ -40,7 +41,7 @@ const logoUrl = computed(() => buildImageUrl(props.logo));
       <div class="meta">
         <div class="head-row">
           <h4>{{ teamName }}</h4>
-          <span v-if="groupLabel" class="group-badge">{{ groupLabel }}</span>
+          <Tag v-if="groupLabel" :value="groupLabel" severity="info" class="group-tag" />
         </div>
         <p>{{ collegeName || '-' }}</p>
       </div>
@@ -117,14 +118,12 @@ const logoUrl = computed(() => buildImageUrl(props.logo));
   text-overflow: ellipsis;
 }
 
-.group-badge {
+.group-tag {
   flex-shrink: 0;
-  font-size: 0.7rem;
-  line-height: 1;
-  padding: 0.16rem 0.35rem;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.2);
-  color: #bfdbfe;
+}
+
+.group-tag :deep(.p-tag-label) {
+  font-size: 0.68rem;
 }
 
 .team-info.compact img {

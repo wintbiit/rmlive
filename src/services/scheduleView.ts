@@ -1,9 +1,11 @@
 import type { Schedule } from '../types/api';
+import { formatFriendlyDateTime } from './timeFormat';
 
 export interface ScheduleRowItem {
   id: string;
   date: string;
   time: string;
+  dateTimeLabel: string;
   stage: string;
   redTeam: {
     teamName: string;
@@ -127,6 +129,7 @@ export function getScheduleRows(data: Schedule | null, selectedZoneId: string | 
         id: String(match.id ?? '-'),
         date: dateObj ? dateObj.toLocaleDateString('zh-CN') : '-',
         time: dateObj ? dateObj.toLocaleTimeString('zh-CN', { hour12: false }) : '-',
+        dateTimeLabel: formatFriendlyDateTime(planStartedAt),
         stage: String(match.matchType ?? '-'),
         redTeam: {
           teamName: redTeamName,

@@ -82,12 +82,12 @@ function getScoreParts(score: string | undefined) {
             <strong>{{ getScoreParts(match.score).blue }}</strong>
           </div>
         </div>
-        <div class="score-sub">小局 {{ match.gameScore }}</div>
+        <Tag class="score-sub-tag" severity="contrast" icon="pi pi-chart-bar" :value="`小局 ${match.gameScore}`" />
       </div>
     </div>
 
     <template v-if="match">
-      <div class="meta-tags">
+      <div class="meta-strip">
         <Tag severity="secondary" :value="`阶段 ${match.stage}`" />
         <Tag severity="secondary" :value="`场次 ${match.orderNumber}`" />
         <Tag severity="contrast" :value="`${startPrefix} ${match.startAt}`" />
@@ -127,7 +127,7 @@ function getScoreParts(score: string | undefined) {
 }
 
 .match-body {
-  margin-top: 0.75rem;
+  margin-top: 0.62rem;
 }
 
 .hero-block {
@@ -145,13 +145,9 @@ function getScoreParts(score: string | undefined) {
   margin-top: 0.5rem;
 }
 
-.compact-block .meta-tags :deep(.p-tag) {
-  font-size: 0.72rem;
-}
-
 .score-board {
-  margin-top: 0.8rem;
-  padding: 1rem 1.1rem;
+  margin-top: 0.65rem;
+  padding: 0.8rem 0.9rem;
   border-radius: 0.8rem;
   text-align: center;
   background: linear-gradient(135deg, rgb(2 6 23 / 0.72), rgb(30 58 138 / 0.34));
@@ -198,17 +194,19 @@ function getScoreParts(score: string | undefined) {
   border: 1px solid rgb(96 165 250 / 0.4);
 }
 
-.score-sub {
-  margin-top: 0.15rem;
-  font-size: 0.9rem;
-  opacity: 0.88;
+.score-sub-tag {
+  margin-top: 0.24rem;
 }
 
-.meta-tags {
-  margin-top: 0.65rem;
+.meta-strip {
+  margin-top: 0.5rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.35rem;
+}
+
+.meta-strip :deep(.p-tag) {
+  font-size: 0.72rem;
 }
 
 @media (max-width: 760px) {
@@ -238,8 +236,8 @@ function getScoreParts(score: string | undefined) {
     display: none;
   }
 
-  .meta-tags :deep(.p-tag) {
-    font-size: 0.72rem;
+  .meta-strip :deep(.p-tag) {
+    font-size: 0.7rem;
   }
 }
 </style>

@@ -47,8 +47,12 @@ function toGroupLabel(teamName: string): string {
     <template #content>
       <Tabs v-model:value="tab">
         <TabList>
-          <Tab value="schedule">赛程</Tab>
-          <Tab value="result">赛果</Tab>
+          <Tab value="schedule">
+            <span class="tab-title"><i class="pi pi-calendar" />赛程</span>
+          </Tab>
+          <Tab value="result">
+            <span class="tab-title"><i class="pi pi-trophy" />赛果</span>
+          </Tab>
         </TabList>
 
         <TabPanels>
@@ -59,7 +63,7 @@ function toGroupLabel(teamName: string): string {
                 <header class="match-head">
                   <div class="head-left">
                     <Tag severity="secondary" :value="item.stage" />
-                    <span class="start-at">{{ item.date }} {{ item.time }}</span>
+                    <span class="start-at"><i class="pi pi-clock" />{{ item.dateTimeLabel }}</span>
                   </div>
                   <Tag :severity="toStatusSeverity(item.statusRaw)" :value="item.status" />
                 </header>
@@ -93,7 +97,7 @@ function toGroupLabel(teamName: string): string {
                 <header class="match-head">
                   <div class="head-left">
                     <Tag severity="secondary" :value="item.stage" />
-                    <span class="start-at">{{ item.date }} {{ item.time }}</span>
+                    <span class="start-at"><i class="pi pi-clock" />{{ item.dateTimeLabel }}</span>
                   </div>
                   <Tag :severity="toStatusSeverity(item.statusRaw)" :value="item.status" />
                 </header>
@@ -118,8 +122,8 @@ function toGroupLabel(teamName: string): string {
                 </div>
 
                 <div class="result-score">
-                  <span>比分 {{ item.score }}</span>
-                  <span>小局 {{ item.gameScore }}</span>
+                  <Tag severity="contrast" icon="pi pi-chart-line" :value="`比分 ${item.score}`" />
+                  <Tag severity="secondary" icon="pi pi-chart-bar" :value="`小局 ${item.gameScore}`" />
                 </div>
               </article>
             </div>
@@ -140,6 +144,16 @@ function toGroupLabel(teamName: string): string {
 .match-list {
   display: grid;
   gap: 0.65rem;
+}
+
+.tab-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tab-title .pi {
+  font-size: 0.76rem;
 }
 
 .match-card {
@@ -165,11 +179,18 @@ function toGroupLabel(teamName: string): string {
 }
 
 .start-at {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.78rem;
   opacity: 0.78;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.start-at .pi {
+  font-size: 0.72rem;
 }
 
 .teams {
@@ -185,10 +206,7 @@ function toGroupLabel(teamName: string): string {
   justify-content: center;
 }
 
-.result-score span {
-  border-radius: 999px;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.76rem;
-  background: rgba(51, 65, 85, 0.35);
+.result-score :deep(.p-tag) {
+  font-size: 0.74rem;
 }
 </style>

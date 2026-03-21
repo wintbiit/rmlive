@@ -89,15 +89,15 @@ const liveStateTag = computed(() => {
 <style scoped>
 .hero-meta {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   flex-wrap: wrap;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.55rem;
 }
 
 .next-panel {
-  margin-top: 0.85rem;
+  margin-top: 0.6rem;
   border: 1px solid rgb(148 163 184 / 0.24);
-  border-radius: 0.75rem;
+  border-radius: 0.65rem;
 }
 
 .next-header {
@@ -106,6 +106,19 @@ const liveStateTag = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.next-header h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.next-panel :deep(.p-panel-header) {
+  padding: 0.5rem 0.7rem;
+}
+
+.next-panel :deep(.p-panel-content) {
+  padding: 0.55rem 0.7rem 0.6rem;
 }
 
 @media (max-width: 760px) {

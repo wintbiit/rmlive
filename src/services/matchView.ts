@@ -1,4 +1,5 @@
 import type { CurrentAndNextMatches } from '../types/api';
+import { formatFriendlyDateTime } from './timeFormat';
 
 export interface TeamView {
   teamName: string;
@@ -145,7 +146,7 @@ export function toMatchView(data: unknown): MatchView | null {
     status: toStringValue(asRecord.status),
     stage: toStringValue(asRecord.matchType),
     orderNumber: toStringValue(asRecord.orderNumber),
-    startAt: toStringValue(asRecord.planStartedAt),
+    startAt: formatFriendlyDateTime(asRecord.planStartedAt),
   };
 }
 

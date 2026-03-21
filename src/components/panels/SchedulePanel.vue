@@ -48,8 +48,12 @@ function toGroupLabel(teamName: string): string {
     <template #content>
       <Tabs v-model:value="tab">
         <TabList>
-          <Tab value="schedule">赛程</Tab>
-          <Tab value="result">赛果</Tab>
+          <Tab value="schedule">
+            <span class="tab-title"><i class="pi pi-calendar" />赛程</span>
+          </Tab>
+          <Tab value="result">
+            <span class="tab-title"><i class="pi pi-trophy" />赛果</span>
+          </Tab>
         </TabList>
 
         <TabPanels>
@@ -63,8 +67,11 @@ function toGroupLabel(teamName: string): string {
                 stripedRows
                 tableStyle="min-width: 48rem"
               >
-                <Column field="date" header="日期" />
-                <Column field="time" header="时间" />
+                <Column header="开赛时间">
+                  <template #body="{ data }">
+                    <span class="time-cell"><i class="pi pi-clock" />{{ data.dateTimeLabel }}</span>
+                  </template>
+                </Column>
                 <Column header="阶段">
                   <template #body="{ data }">
                     <Tag severity="secondary" :value="data.stage" />
@@ -112,8 +119,11 @@ function toGroupLabel(teamName: string): string {
           <TabPanel value="result">
             <div class="table-wrap">
               <DataTable :value="resultRows" paginator :rows="8" size="small" stripedRows tableStyle="min-width: 48rem">
-                <Column field="date" header="日期" />
-                <Column field="time" header="时间" />
+                <Column header="开赛时间">
+                  <template #body="{ data }">
+                    <span class="time-cell"><i class="pi pi-clock" />{{ data.dateTimeLabel }}</span>
+                  </template>
+                </Column>
                 <Column header="阶段">
                   <template #body="{ data }">
                     <Tag severity="secondary" :value="data.stage" />
@@ -170,6 +180,27 @@ function toGroupLabel(teamName: string): string {
 
 .team-cell {
   min-width: 0;
+}
+
+.tab-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tab-title .pi {
+  font-size: 0.76rem;
+}
+
+.time-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.time-cell .pi {
+  font-size: 0.72rem;
+  opacity: 0.78;
 }
 
 :deep(.p-datatable .p-datatable-tbody > tr > td) {

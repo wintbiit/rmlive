@@ -1,5 +1,6 @@
 import type {
   CurrentAndNextMatches,
+  GroupRankInfo,
   GroupsOrder,
   LiveGameInfo,
   LiveStreamCandidate,
@@ -17,6 +18,7 @@ export const endpoints = {
   liveGameInfo: `${API_BASE}/live_game_info.json`,
   currentAndNextMatches: `${API_BASE}/current_and_next_matches.json`,
   groupsOrder: `${API_BASE}/groups_order.json`,
+  groupRankInfo: `${API_BASE}/group_rank_info.json`,
   robotData: `${API_BASE}/robot_data.json`,
   schedule: `${API_BASE}/schedule.json`,
 };
@@ -31,6 +33,10 @@ export async function fetchCurrentAndNextMatches() {
 
 export async function fetchGroupsOrder() {
   return fetchJson<GroupsOrder>(buildLiveJsonUrl(endpoints.groupsOrder));
+}
+
+export async function fetchGroupRankInfo() {
+  return fetchJson<GroupRankInfo>(buildLiveJsonUrl(endpoints.groupRankInfo));
 }
 
 export async function fetchRobotData() {
@@ -64,6 +70,11 @@ export interface RmPollingController {
 
 export function startRmPolling(handlers: RmPollingHandlers, intervals: RmPollingIntervals = {}): RmPollingController {
   const tasks: PollingTask[] = [];
+  const pollingOptions = {
+    pauseWhenHidden: true,
+    hiddenCheckMs: 5000,
+    resumeImmediately: true,
+  };
 
   const safeRun = async <T>(request: () => Promise<T>, onData: (data: T) => void) => {
     try {
@@ -74,21 +85,36 @@ export function startRmPolling(handlers: RmPollingHandlers, intervals: RmPolling
   };
 
   tasks.push(
-    startPolling(() => safeRun(fetchLiveGameInfo, handlers.onLiveGameInfo), intervals.liveGameInfoMs ?? 12000),
+    startPolling(
+      () => safeRun(fetchLiveGameInfo, handlers.onLiveGameInfo),
+      intervals.liveGameInfoMs ?? 12000,
+      pollingOptions,
+    ),
   );
 
   tasks.push(
     startPolling(
       () => safeRun(fetchCurrentAndNextMatches, handlers.onCurrentAndNextMatches),
       intervals.currentAndNextMatchesMs ?? 12000,
+      pollingOptions,
     ),
   );
 
-  tasks.push(startPolling(() => safeRun(fetchGroupsOrder, handlers.onGroupsOrder), intervals.groupsOrderMs ?? 30000));
+  tasks.push(
+    startPolling(
+      () => safeRun(fetchGroupsOrder, handlers.onGroupsOrder),
+      intervals.groupsOrderMs ?? 30000,
+      pollingOptions,
+    ),
+  );
 
-  tasks.push(startPolling(() => safeRun(fetchRobotData, handlers.onRobotData), intervals.robotDataMs ?? 7000));
+  tasks.push(
+    startPolling(() => safeRun(fetchRobotData, handlers.onRobotData), intervals.robotDataMs ?? 7000, pollingOptions),
+  );
 
-  tasks.push(startPolling(() => safeRun(fetchSchedule, handlers.onSchedule), intervals.scheduleMs ?? 45000));
+  tasks.push(
+    startPolling(() => safeRun(fetchSchedule, handlers.onSchedule), intervals.scheduleMs ?? 45000, pollingOptions),
+  );
 
   return {
     stopAll() {
@@ -108,7 +134,40 @@ export interface LiveZoneOption {
   zoneId: string;
   zoneName: string;
   liveState: number;
+  matchState: number;
+  startAt: number | null;
+  endAt: number | null;
+  zoneDates: string[];
   qualities: LiveQualityOption[];
+}
+
+function toStartAt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) {
+      return Math.floor(parsed / 1000);
+    }
+  }
+
+  return null;
+}
+
+function toDateEpoch(value: string): number | null {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.floor(parsed / 1000);
 }
 
 function toQualityOption(item: LiveStreamCandidate, index: number): LiveQualityOption | null {
@@ -140,6 +199,18 @@ export function extractLiveZones(data: LiveGameInfo | null): LiveZoneOption[] {
       const zoneId = String(zone.zoneId ?? zoneIndex);
       const zoneName = typeof zone.zoneName === 'string' ? zone.zoneName : `分区 ${zoneId}`;
       const liveState = typeof zone.liveState === 'number' ? zone.liveState : 0;
+      const matchState = typeof zone.matchState === 'number' ? zone.matchState : 0;
+      const startAt = toStartAt(zone.startAt ?? zone.start_time);
+      const endAt = toStartAt(zone.endAt ?? zone.end_time);
+      const zoneDates = Array.isArray(zone.zoneDate)
+        ? zone.zoneDate.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : [];
+      const sortedDateEpochs = zoneDates
+        .map(toDateEpoch)
+        .filter((item): item is number => item !== null)
+        .sort((a, b) => a - b);
+      const dateStartAt = sortedDateEpochs[0] ?? null;
+      const dateEndAt = sortedDateEpochs.length ? sortedDateEpochs[sortedDateEpochs.length - 1] + 86399 : null;
       const source = Array.isArray(zone.zoneLiveString) ? zone.zoneLiveString : [];
       const qualities = source
         .map((item, qualityIndex) => toQualityOption(item, qualityIndex))
@@ -149,10 +220,28 @@ export function extractLiveZones(data: LiveGameInfo | null): LiveZoneOption[] {
         zoneId,
         zoneName,
         liveState,
+        matchState,
+        startAt: startAt ?? dateStartAt,
+        endAt: endAt ?? dateEndAt,
+        zoneDates,
         qualities,
       };
     })
-    .filter((zone) => zone.qualities.length > 0);
+    .sort((a, b) => {
+      const aStart = a.startAt ?? Number.MAX_SAFE_INTEGER;
+      const bStart = b.startAt ?? Number.MAX_SAFE_INTEGER;
+      if (aStart !== bStart) {
+        return aStart - bStart;
+      }
+
+      const aEnd = a.endAt ?? Number.MAX_SAFE_INTEGER;
+      const bEnd = b.endAt ?? Number.MAX_SAFE_INTEGER;
+      if (aEnd !== bEnd) {
+        return aEnd - bEnd;
+      }
+
+      return a.zoneId.localeCompare(b.zoneId);
+    });
 }
 
 export function pickDefaultZoneId(zones: LiveZoneOption[]): string | null {
@@ -160,8 +249,18 @@ export function pickDefaultZoneId(zones: LiveZoneOption[]): string | null {
     return null;
   }
 
-  const active = zones.find((zone) => zone.liveState === 1);
-  return active?.zoneId ?? zones[0].zoneId;
+  const playableLive = zones.find((zone) => zone.liveState === 1 && zone.qualities.length > 0);
+  if (playableLive) {
+    return playableLive.zoneId;
+  }
+
+  const playableMatch = zones.find((zone) => zone.matchState === 1 && zone.qualities.length > 0);
+  if (playableMatch) {
+    return playableMatch.zoneId;
+  }
+
+  const firstPlayable = zones.find((zone) => zone.qualities.length > 0);
+  return firstPlayable?.zoneId ?? zones[0].zoneId;
 }
 
 export function resolveLiveStreamUrl(

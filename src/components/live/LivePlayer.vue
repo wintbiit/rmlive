@@ -6,10 +6,18 @@ import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';
 import { onBeforeUnmount, ref, watch } from 'vue';
 
+interface QualityOption {
+  label: string;
+  value: string;
+  src: string;
+}
+
 interface Props {
   streamUrl: string | null;
   loading: boolean;
   errorMessage: string;
+  qualityOptions?: QualityOption[];
+  selectedQualityRes?: string | null;
 }
 
 const props = defineProps<Props>();
@@ -35,6 +43,14 @@ function mountPlayer(url: string) {
 
   destroyPlayer();
 
+  const qualityItems = (props.qualityOptions ?? [])
+    .filter((item) => item.src && item.src.startsWith('http'))
+    .map((item) => ({
+      html: item.label,
+      url: item.src,
+      default: item.value === props.selectedQualityRes,
+    }));
+
   player = new Artplayer({
     container: container.value,
     url,
@@ -45,6 +61,7 @@ function mountPlayer(url: string) {
     pip: true,
     fullscreen: true,
     fullscreenWeb: true,
+    quality: qualityItems.length > 1 ? qualityItems : undefined,
     customType: {
       m3u8(video, m3u8Url) {
         if (Hls.isSupported()) {
@@ -108,7 +125,17 @@ onBeforeUnmount(() => {
   aspect-ratio: 16 / 9;
   border-radius: 12px;
   overflow: hidden;
-  background: #0f172a;
+  background: var(--player-shell-bg);
+}
+
+:global(:root) {
+  --player-shell-bg: #e2e8f0;
+  --player-overlay-bg: rgba(241, 245, 249, 0.72);
+}
+
+:global(html.app-dark) {
+  --player-shell-bg: #0f172a;
+  --player-overlay-bg: rgba(15, 23, 42, 0.35);
 }
 
 .player-container {
@@ -129,7 +156,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   flex-direction: column;
   backdrop-filter: blur(1px);
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--player-overlay-bg);
 }
 
 .center {

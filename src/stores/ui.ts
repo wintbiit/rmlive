@@ -17,8 +17,8 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(THEME_KEY, isDark.value ? 'dark' : 'light');
   }
 
-  function toggleTheme() {
-    isDark.value = !isDark.value;
+  function setDarkMode(enabled: boolean) {
+    isDark.value = enabled;
     applyTheme();
   }
 
@@ -66,7 +66,7 @@ export const useUiStore = defineStore('ui', () => {
     dataDialogVisible,
     dataDialogTeam,
     nextMatchExpanded,
-    toggleTheme,
+    setDarkMode,
     openTeamData,
     setNextMatchExpanded,
     initializeUi,

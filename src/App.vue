@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
-import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Dialog from 'primevue/dialog';
+import InputGroup from 'primevue/inputgroup';
+import InputGroupAddon from 'primevue/inputgroupaddon';
+import Message from 'primevue/message';
 import Select from 'primevue/select';
+import SelectButton from 'primevue/selectbutton';
 import Skeleton from 'primevue/skeleton';
 import Tag from 'primevue/tag';
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+import ToggleButton from 'primevue/togglebutton';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import LivePlayer from './components/live/LivePlayer.vue';
 import CurrentMatchPanel from './components/panels/CurrentMatchPanel.vue';
+import { resolveGroupRankSectionByGroup, resolveGroupRankSectionByTeam } from './services/groupRankView';
 import { useRmDataStore } from './stores/rmData';
 import { useUiStore } from './stores/ui';
 
@@ -23,17 +28,15 @@ const {
   currentAndNextMatches,
   robotData,
   schedule,
+  groupRankInfo,
   selectedZone,
   selectedZoneId,
   selectedQualityRes,
   streamLoading,
   effectiveStreamUrl,
   effectiveStreamErrorMessage,
-  hasError,
-  lastUpdated,
   selectedZoneName,
   zoneOptions,
-  qualityOptions,
   teamGroupMap,
   groupSections,
 } = storeToRefs(dataStore);
@@ -54,15 +57,127 @@ const dialogTeamGroupSection = computed(() => {
   return null;
 });
 
+const dialogTeamRows = computed(() => {
+  const section = dialogTeamGroupSection.value;
+  if (!section) {
+    return [];
+  }
+
+  return section.teams.map((team, index) => ({
+    rank: Number(team.rank) || index + 1,
+    teamName: team.teamName,
+    collegeName: team.collegeName,
+    isCurrent: team.teamName === dataDialogTeam.value,
+  }));
+});
+
+const dialogRankSection = computed(() => {
+  const byGroup = resolveGroupRankSectionByGroup(
+    groupRankInfo.value,
+    selectedZoneId.value,
+    selectedZoneName.value,
+    dialogTeamGroupSection.value?.group ?? null,
+  );
+
+  if (byGroup) {
+    return byGroup;
+  }
+
+  return resolveGroupRankSectionByTeam(
+    groupRankInfo.value,
+    selectedZoneId.value,
+    selectedZoneName.value,
+    dataDialogTeam.value,
+  );
+});
+
+const dialogRankRows = computed(() => {
+  const section = dialogRankSection.value;
+  if (!section) {
+    return dialogTeamRows.value.map((item) => ({
+      rank: Number(item.rank) || 0,
+      teamName: item.teamName,
+      collegeName: item.collegeName,
+      collegeLogo: '',
+      winDrawLose: '-',
+      points: 0,
+      netVictoryPoint: 0,
+      totalDamage: 0,
+      totalRemainHp: 0,
+      isCurrent: item.isCurrent,
+      isFallback: true,
+    }));
+  }
+
+  return section.rows.map((item) => ({
+    ...item,
+    isCurrent: item.teamName === dataDialogTeam.value,
+    isFallback: false,
+  }));
+});
+
+const sortedDialogRankRows = computed(() => {
+  const rows = [...dialogRankRows.value].sort((a, b) => {
+    if (a.isFallback && b.isFallback) {
+      return a.rank - b.rank;
+    }
+
+    if (b.points !== a.points) {
+      return b.points - a.points;
+    }
+
+    if (b.netVictoryPoint !== a.netVictoryPoint) {
+      return b.netVictoryPoint - a.netVictoryPoint;
+    }
+
+    return a.rank - b.rank;
+  });
+
+  return rows.map((row, index) => ({
+    ...row,
+    rankDisplay: row.rank > 0 ? row.rank : index + 1,
+  }));
+});
+
+const hasGroupRankSection = computed(() => {
+  return Boolean(dialogRankSection.value || dialogTeamGroupSection.value);
+});
+
+const rankSectionTitle = computed(() => {
+  return dialogRankSection.value?.groupName ?? dialogTeamGroupSection.value?.group ?? '当前组';
+});
+
+const compactRankRows = computed(() => {
+  return sortedDialogRankRows.value.slice(0, 8);
+});
+
+const playerQualityOptions = computed(() => {
+  const zone = selectedZone.value;
+  if (!zone) {
+    return [];
+  }
+
+  return zone.qualities.map((item) => ({
+    label: item.label,
+    value: item.res,
+    src: item.src,
+  }));
+});
+
 const onZoneChange = dataStore.setZone;
-const onQualityChange = dataStore.setQuality;
 const retryLiveStream = dataStore.retryLiveStream;
 
 const onOpenTeamData = uiStore.openTeamData;
-const toggleTheme = uiStore.toggleTheme;
 const onNextExpandedChange = uiStore.setNextMatchExpanded;
 const brandLogoUrl = `${import.meta.env.BASE_URL}rmlive-logo.svg`;
 const enableSecondaryPanels = ref(false);
+
+const themeChecked = computed({
+  get: () => isDark.value,
+  set: (value: boolean) => uiStore.setDarkMode(value),
+});
+
+const rankTableWrapRef = ref<HTMLElement | null>(null);
 
 let deferTimer: number | null = null;
 
@@ -79,6 +194,28 @@ function scheduleSecondaryPanelsMount() {
 
   deferTimer = window.setTimeout(() => mountSecondaryPanels(), 180);
 }
+
+function rankRowClass(data: { isCurrent?: boolean }) {
+  return data.isCurrent ? 'is-current-row' : '';
+}
+
+function scrollToCurrentRankRow() {
+  if (!dataDialogVisible.value) {
+    return;
+  }
+
+  const wrap = rankTableWrapRef.value;
+  if (!wrap) {
+    return;
+  }
+
+  const row = wrap.querySelector('.rank-row.is-current-row') as HTMLElement | null;
+  row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+watch([dataDialogVisible, dataDialogTeam, sortedDialogRankRows], () => {
+  void nextTick(() => scrollToCurrentRankRow());
+});
 
 onMounted(() => {
   uiStore.initializeUi();
@@ -108,30 +245,75 @@ onBeforeUnmount(() => {
     <Card class="controls-card">
       <template #content>
         <div class="controls">
-          <Tag :severity="hasError ? 'danger' : 'success'" :value="hasError ? '部分数据异常' : '数据更新中'" />
-          <Tag severity="info" :value="`最近刷新: ${lastUpdated}`" />
+          <div v-if="!isMobile" class="zone-select-button-wrap">
+            <SelectButton
+              :model-value="selectedZoneId"
+              :options="zoneOptions"
+              optionLabel="label"
+              optionValue="value"
+              optionDisabled="disabled"
+              fluid
+              size="small"
+              @update:model-value="onZoneChange"
+            >
+              <template #option="slotProps">
+                <span class="zone-option-item" :class="`state-${slotProps.option.state}`">
+                  <span v-if="slotProps.option.liveLogo" class="zone-start-badge" aria-hidden="true">
+                    <i class="pi pi-video" />
+                  </span>
+                  <i v-else :class="slotProps.option.icon" aria-hidden="true" />
+                  <span class="zone-option-texts">
+                    <span class="zone-option-title">{{
+                      slotProps.option.title || slotProps.option.label || slotProps.option.value
+                    }}</span>
+                    <small v-if="slotProps.option.dateText">{{ slotProps.option.dateText }}</small>
+                  </span>
+                </span>
+              </template>
+            </SelectButton>
+          </div>
 
-          <Select
-            :model-value="selectedZoneId"
-            :options="zoneOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="选择直播间"
-            class="zone-select"
-            @update:model-value="onZoneChange"
+          <InputGroup v-else class="zone-select">
+            <InputGroupAddon>
+              <i class="pi pi-map-marker" />
+            </InputGroupAddon>
+            <Select
+              :model-value="selectedZoneId"
+              :options="zoneOptions"
+              optionLabel="label"
+              optionValue="value"
+              optionDisabled="disabled"
+              size="small"
+              placeholder="站点"
+              @update:model-value="onZoneChange"
+            >
+              <template #option="slotProps">
+                <span class="zone-option-item" :class="`state-${slotProps.option.state}`">
+                  <span v-if="slotProps.option.liveLogo" class="zone-start-badge" aria-hidden="true">
+                    <i class="pi pi-video" />
+                  </span>
+                  <i v-else :class="slotProps.option.icon" aria-hidden="true" />
+                  <span class="zone-option-texts">
+                    <span class="zone-option-title">{{
+                      slotProps.option.title || slotProps.option.label || slotProps.option.value
+                    }}</span>
+                    <small v-if="slotProps.option.dateText">{{ slotProps.option.dateText }}</small>
+                  </span>
+                </span>
+              </template>
+            </Select>
+          </InputGroup>
+
+          <ToggleButton
+            v-model="themeChecked"
+            on-icon="pi pi-moon"
+            off-icon="pi pi-sun"
+            on-label=""
+            off-label=""
+            size="small"
+            class="theme-toggle-btn"
+            aria-label="主题切换"
           />
-
-          <Select
-            :model-value="selectedQualityRes"
-            :options="qualityOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="选择清晰度"
-            class="quality-select"
-            @update:model-value="onQualityChange"
-          />
-
-          <Button size="small" :label="isDark ? '切换浅色' : '切换深色'" outlined @click="toggleTheme" />
         </div>
       </template>
     </Card>
@@ -156,6 +338,8 @@ onBeforeUnmount(() => {
           :stream-url="effectiveStreamUrl"
           :loading="streamLoading"
           :error-message="effectiveStreamErrorMessage"
+          :quality-options="playerQualityOptions"
+          :selected-quality-res="selectedQualityRes"
           @retry="retryLiveStream"
         />
       </div>
@@ -184,24 +368,41 @@ onBeforeUnmount(() => {
     </section>
 
     <Dialog v-model:visible="dataDialogVisible" modal header="比赛数据" :style="{ width: 'min(1100px, 96vw)' }">
-      <section v-if="dialogTeamGroupSection" class="group-block">
-        <h3>{{ dialogTeamGroupSection.group }} 组排名</h3>
-        <div class="group-list">
+      <section v-if="hasGroupRankSection" class="group-block">
+        <h3>{{ rankSectionTitle }} 组排名</h3>
+        <div ref="rankTableWrapRef" class="group-rank-table-wrap" v-if="compactRankRows.length">
           <article
-            v-for="item in dialogTeamGroupSection.teams"
-            :key="`${dialogTeamGroupSection.group}-${item.teamName}`"
-            class="group-row"
-            :class="{ active: item.teamName === dataDialogTeam }"
+            v-for="row in compactRankRows"
+            :key="`${rankSectionTitle}-${row.teamName}-${row.rankDisplay}`"
+            class="rank-row"
+            :class="{ 'is-current-row': row.isCurrent }"
+            role="button"
+            tabindex="0"
+            @click="onOpenTeamData(row.teamName)"
+            @keydown.enter.prevent="onOpenTeamData(row.teamName)"
+            @keydown.space.prevent="onOpenTeamData(row.teamName)"
           >
-            <span class="rank">#{{ item.rank }}</span>
-            <div class="meta">
-              <strong>{{ item.teamName }}</strong>
-              <small>{{ item.collegeName }}</small>
+            <div class="rank-main">
+              <Tag :value="`#${row.rankDisplay}`" severity="contrast" />
+              <div class="rank-meta">
+                <strong>{{ row.teamName }}</strong>
+                <small>{{ row.collegeName }}</small>
+              </div>
+              <Tag v-if="row.isCurrent" value="当前查看" severity="info" />
             </div>
-            <span v-if="item.teamName === dataDialogTeam" class="current">当前查看</span>
+
+            <div class="rank-metrics">
+              <Tag :value="`胜平负 ${row.winDrawLose}`" severity="secondary" />
+              <Tag :value="`积分 ${row.points}`" severity="secondary" />
+              <Tag :value="`净胜 ${row.netVictoryPoint}`" severity="secondary" />
+            </div>
           </article>
         </div>
+        <Message v-else severity="warn" :closable="false" class="rank-empty-tip">
+          当前组暂无可展示的详细排名数据
+        </Message>
       </section>
+      <Message v-else severity="warn" :closable="false">未匹配到当前队伍对应的小组排名数据</Message>
 
       <RobotDataPanel
         v-if="dataDialogVisible"
@@ -223,9 +424,27 @@ onBeforeUnmount(() => {
 
 :global(body) {
   font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color: var(--app-fg);
   background:
-    radial-gradient(1200px 500px at 80% -10%, rgba(0, 112, 243, 0.22), transparent 60%),
-    linear-gradient(180deg, #020617 0%, #0f172a 100%);
+    radial-gradient(1200px 500px at 80% -10%, var(--bg-radial), transparent 60%),
+    linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
+  transition:
+    background 220ms ease,
+    color 220ms ease;
+}
+
+:global(:root) {
+  --app-fg: #0f172a;
+  --bg-start: #f8fafc;
+  --bg-end: #e2e8f0;
+  --bg-radial: rgba(14, 165, 233, 0.2);
+}
+
+:global(html.app-dark) {
+  --app-fg: #e2e8f0;
+  --bg-start: #020617;
+  --bg-end: #0f172a;
+  --bg-radial: rgba(0, 112, 243, 0.22);
 }
 
 .app-shell {
@@ -265,16 +484,89 @@ onBeforeUnmount(() => {
   margin-bottom: 1rem;
 }
 
-.controls {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  flex-wrap: wrap;
+.controls-card :deep(.p-card-body) {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
 }
 
-.zone-select,
-.quality-select {
-  min-width: 10rem;
+.controls {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.zone-select {
+  min-width: 9rem;
+}
+
+.zone-select-button-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.zone-option-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.zone-start-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: #dc2626;
+  color: #fff;
+}
+
+.zone-option-texts {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.05;
+  min-width: 0;
+}
+
+.zone-option-title {
+  font-weight: 600;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 11rem;
+}
+
+.zone-option-texts small {
+  opacity: 0.72;
+}
+
+.zone-option-item.state-live i {
+  color: #22c55e;
+}
+
+.zone-option-item.state-live .zone-option-title {
+  color: #16a34a;
+}
+
+.zone-option-item.state-offline i {
+  color: #f59e0b;
+}
+
+.zone-option-item.state-upcoming i {
+  color: #3b82f6;
+}
+
+.zone-option-item.state-ended i {
+  color: #94a3b8;
+}
+
+.theme-toggle-btn {
+  margin-left: auto;
 }
 
 :deep(.p-dialog) {
@@ -319,54 +611,58 @@ onBeforeUnmount(() => {
   font-size: 0.96rem;
 }
 
-.group-list {
+.rank-empty-tip {
+  margin-top: 0.55rem;
+}
+
+.group-rank-table-wrap {
+  overflow: auto;
+  max-height: 20rem;
   display: grid;
+  gap: 0.45rem;
+}
+
+.rank-row {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 0.65rem;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.rank-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rank-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.rank-meta strong {
+  display: block;
+  line-height: 1.15;
+}
+
+.rank-meta small {
+  display: block;
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rank-metrics {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
 }
 
-.group-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 0.6rem;
-  align-items: center;
-  padding: 0.38rem 0.5rem;
-  border-radius: 0.55rem;
-  background: rgba(15, 23, 42, 0.35);
-}
-
-.group-row.active {
-  outline: 1px solid rgba(59, 130, 246, 0.7);
+.rank-row.is-current-row {
+  border-color: rgba(59, 130, 246, 0.65);
   background: rgba(59, 130, 246, 0.12);
-}
-
-.group-row .rank {
-  font-weight: 700;
-  font-size: 0.82rem;
-}
-
-.group-row .meta {
-  min-width: 0;
-}
-
-.group-row .meta strong {
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.group-row .meta small {
-  display: block;
-  opacity: 0.75;
-  font-size: 0.78rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.group-row .current {
-  font-size: 0.72rem;
-  color: #93c5fd;
 }
 
 @media (max-width: 1024px) {
@@ -398,29 +694,34 @@ onBeforeUnmount(() => {
   }
 
   .controls {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
     gap: 0.5rem;
+    align-items: center;
   }
 
   .controls > * {
     min-width: 0;
   }
 
-  .zone-select,
-  .quality-select {
+  .zone-select {
     min-width: 0;
-    width: 100%;
+    flex: 1;
   }
 
-  .controls :deep(.p-button) {
-    width: 100%;
+  .zone-select-button-wrap {
+    min-width: 0;
+  }
+
+  .theme-toggle-btn {
+    margin-left: 0;
+    justify-self: end;
+    width: fit-content;
   }
 }
 
 @media (max-width: 520px) {
-  .controls {
-    grid-template-columns: 1fr;
+  .theme-toggle-btn {
+    margin-left: 0;
   }
 }
 </style>

@@ -45,6 +45,7 @@ export interface GroupInfo extends AnyRecord {
 }
 
 export type GroupsOrder = GroupInfo[] | AnyRecord;
+export type GroupRankInfo = AnyRecord;
 
 export interface RobotDataEntry extends AnyRecord {
   team?: string;
