@@ -8,6 +8,9 @@
     "build": "vue-tsc -b && vite build",
     "analyze": "vue-tsc -b && vite build --mode analyze",
     "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "check": "pnpm test:run && pnpm build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "stylelint": "stylelint \"**/*.{html,vue,css,scss,less}\"",
@@ -43,6 +46,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.26.1",
     "vite": "^8.0.1",
+    "vitest": "^4.1.0",
     "vue-tsc": "^3.2.5"
   },
   "lint-staged": {

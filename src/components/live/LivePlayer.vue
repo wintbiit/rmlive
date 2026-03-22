@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Artplayer from 'artplayer';
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
-import Hls from 'hls.js';
+import Hls from 'hls.js/dist/hls.light.mjs';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';

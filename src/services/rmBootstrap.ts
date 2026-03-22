@@ -50,3 +50,27 @@ export async function fetchBootstrapData(
 export function getFulfilledValue<T>(result: PromiseSettledResult<T>): T | null {
   return result.status === 'fulfilled' ? result.value : null;
 }
+
+export function getRejectedBootstrapSources(results: BootstrapFetchResults): string[] {
+  const matrix: Array<[string, PromiseSettledResult<unknown>]> = [
+    ['liveGameInfo', results.liveGameInfoResult],
+    ['currentAndNextMatches', results.currentAndNextResult],
+    ['groupsOrder', results.groupsOrderResult],
+    ['schedule', results.scheduleResult],
+    ['robotData', results.robotResult],
+    ['groupRankInfo', results.groupRankResult],
+  ];
+
+  return matrix.filter(([, result]) => result.status === 'rejected').map(([source]) => source);
+}
+
+export function resolveBootstrapStreamErrorMessage(
+  results: BootstrapFetchResults,
+  defaultMessage = '直播流请求失败，请检查网络后重试',
+): string | null {
+  return results.liveGameInfoResult.status === 'rejected' ? defaultMessage : null;
+}
+
+export function shouldKeepBootstrapFallback(results: BootstrapFetchResults): boolean {
+  return getRejectedBootstrapSources(results).length > 0;
+}

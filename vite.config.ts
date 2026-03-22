@@ -40,8 +40,12 @@ export default defineConfig(({ mode }) => {
               return undefined;
             }
 
-            if (id.includes('artplayer') || id.includes('hls.js')) {
-              return 'player-vendor';
+            if (id.includes('hls.js')) {
+              return 'player-hls';
+            }
+
+            if (id.includes('artplayer') || id.includes('artplayer-plugin-danmuku')) {
+              return 'player-art';
             }
 
             if (

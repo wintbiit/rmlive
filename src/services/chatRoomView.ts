@@ -1,4 +1,5 @@
 import type { LiveGameInfo } from '../types/api';
+import { logInfo, logWarn } from './observability';
 import { normalizeZoneId } from './zoneView';
 
 function pickChatRoomId(value: unknown): string | null {
@@ -43,6 +44,11 @@ export function resolveZoneChatRoomId(
 
     const matchedByName = pickChatRoomId(byName?.chatRoomId);
     if (matchedByName) {
+      logInfo('chat-room', 'zone id match missing, fallback matched by zone name', {
+        selectedZoneId,
+        selectedZoneName,
+        chatRoomId: matchedByName,
+      });
       return matchedByName;
     }
   }
@@ -52,5 +58,19 @@ export function resolveZoneChatRoomId(
     return pickChatRoomId(zone.chatRoomId);
   }) as Record<string, unknown> | undefined;
 
-  return pickChatRoomId(fallback?.chatRoomId);
+  const fallbackRoomId = pickChatRoomId(fallback?.chatRoomId);
+  if (fallbackRoomId) {
+    logWarn('chat-room', 'falling back to first available chat room id', {
+      selectedZoneId,
+      selectedZoneName,
+      chatRoomId: fallbackRoomId,
+    });
+    return fallbackRoomId;
+  }
+
+  logWarn('chat-room', 'unable to resolve chat room id', {
+    selectedZoneId,
+    selectedZoneName,
+  });
+  return null;
 }

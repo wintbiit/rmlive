@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 import { createBootstrapTimeoutRunner } from '../services/bootstrapTimeout';
 import { buildTeamGroupMap, extractGroupSections } from '../services/groupView';
+import { logWarn, toErrorSummary } from '../services/observability';
 import {
   extractLiveZones,
   fetchLiveGameInfo,
@@ -10,7 +11,13 @@ import {
   startRmPolling,
   type RmPollingController,
 } from '../services/rmApi';
-import { fetchBootstrapData, getFulfilledValue } from '../services/rmBootstrap';
+import {
+  fetchBootstrapData,
+  getFulfilledValue,
+  getRejectedBootstrapSources,
+  resolveBootstrapStreamErrorMessage,
+  shouldKeepBootstrapFallback,
+} from '../services/rmBootstrap';
 import { extractInferredLiveZoneIdSet, extractScheduleZoneIdSet } from '../services/rmPayloadView';
 import { resolveDefaultQualityRes, resolveEffectiveStreamErrorMessage } from '../services/rmStreamView';
 import { pickBestZoneCandidate, shouldAutoPromoteZone } from '../services/zoneSelection';
@@ -67,17 +74,6 @@ export const useRmDataStore = defineStore('rm-data', () => {
     const nowEpoch = Math.floor(Date.now() / 1000);
 
     return liveZones.value.map((item) => toZoneOptionItem(item, nowEpoch));
-  });
-
-  const qualityOptions = computed(() => {
-    if (!selectedZone.value) {
-      return [];
-    }
-
-    return selectedZone.value.qualities.map((item) => ({
-      label: item.label,
-      value: item.res,
-    }));
   });
 
   const streamUrl = computed(() =>
@@ -181,10 +177,6 @@ export const useRmDataStore = defineStore('rm-data', () => {
     ensureQualitySelection();
   }
 
-  function setQuality(value: string | null) {
-    selectedQualityRes.value = value;
-  }
-
   watch(
     liveZones,
     () => {
@@ -236,6 +228,29 @@ export const useRmDataStore = defineStore('rm-data', () => {
       const nextSchedule = getFulfilledValue(scheduleResult);
       const nextRobotData = getFulfilledValue(robotResult);
       const nextGroupRankInfo = getFulfilledValue(groupRankResult);
+      const rejectedSources = getRejectedBootstrapSources({
+        liveGameInfoResult,
+        currentAndNextResult,
+        groupsOrderResult,
+        scheduleResult,
+        robotResult,
+        groupRankResult,
+      });
+
+      if (
+        shouldKeepBootstrapFallback({
+          liveGameInfoResult,
+          currentAndNextResult,
+          groupsOrderResult,
+          scheduleResult,
+          robotResult,
+          groupRankResult,
+        })
+      ) {
+        logWarn('bootstrap', 'bootstrap completed with rejected requests', {
+          rejectedSources,
+        });
+      }
 
       if (nextLiveGameInfo) {
         liveGameInfo.value = nextLiveGameInfo;
@@ -264,8 +279,19 @@ export const useRmDataStore = defineStore('rm-data', () => {
       ensureZoneSelection();
       ensureQualitySelection();
 
-      if (liveGameInfoResult.status === 'rejected') {
-        streamErrorMessage.value = '直播流请求失败，请检查网络后重试';
+      const bootstrapStreamErrorMessage = resolveBootstrapStreamErrorMessage({
+        liveGameInfoResult,
+        currentAndNextResult,
+        groupsOrderResult,
+        scheduleResult,
+        robotResult,
+        groupRankResult,
+      });
+      if (bootstrapStreamErrorMessage) {
+        logWarn('stream', 'live_game_info bootstrap request failed', {
+          error: toErrorSummary(liveGameInfoResult.status === 'rejected' ? liveGameInfoResult.reason : 'unknown'),
+        });
+        streamErrorMessage.value = bootstrapStreamErrorMessage;
       }
 
       streamLoading.value = false;
@@ -293,6 +319,9 @@ export const useRmDataStore = defineStore('rm-data', () => {
           },
           onError() {
             if (!streamUrl.value) {
+              logWarn('stream', 'polling reported error with no active stream url', {
+                selectedZoneId: selectedZoneId.value,
+              });
               streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
             }
           },
@@ -313,7 +342,10 @@ export const useRmDataStore = defineStore('rm-data', () => {
       liveGameInfo.value = await fetchLiveGameInfo();
       ensureZoneSelection();
       ensureQualitySelection();
-    } catch {
+    } catch (error) {
+      logWarn('stream', 'retry live stream failed', {
+        error: toErrorSummary(error),
+      });
       streamErrorMessage.value = '直播流请求失败，请检查网络后重试';
     } finally {
       streamLoading.value = false;
@@ -323,26 +355,20 @@ export const useRmDataStore = defineStore('rm-data', () => {
   return {
     liveGameInfo,
     currentAndNextMatches,
-    groupsOrder,
     groupRankInfo,
     robotData,
     schedule,
     selectedZoneId,
     selectedQualityRes,
     streamLoading,
-    streamErrorMessage,
-    liveZones,
     selectedZone,
     selectedZoneName,
     zoneOptions,
-    qualityOptions,
-    streamUrl,
     effectiveStreamUrl,
     effectiveStreamErrorMessage,
     groupSections,
     teamGroupMap,
     setZone,
-    setQuality,
     startPolling,
     stopPolling,
     retryLiveStream,
