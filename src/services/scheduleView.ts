@@ -3,9 +3,12 @@ import { formatFriendlyDateTime } from './timeFormat';
 
 export interface ScheduleRowItem {
   id: string;
+  slug: string;
+  orderNumber: string;
   date: string;
   time: string;
   dateTimeLabel: string;
+  startedAtTs: number;
   stage: string;
   redTeam: {
     teamName: string;
@@ -127,9 +130,12 @@ export function getScheduleRows(data: Schedule | null, selectedZoneId: string | 
 
       return {
         id: String(match.id ?? '-'),
+        slug: String(match.slug ?? '-'),
+        orderNumber: String(match.orderNumber ?? '-'),
         date: dateObj ? dateObj.toLocaleDateString('zh-CN') : '-',
         time: dateObj ? dateObj.toLocaleTimeString('zh-CN', { hour12: false }) : '-',
         dateTimeLabel: formatFriendlyDateTime(planStartedAt),
+        startedAtTs: dateObj ? dateObj.getTime() : 0,
         stage: String(match.matchType ?? '-'),
         redTeam: {
           teamName: redTeamName,

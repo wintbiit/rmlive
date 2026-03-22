@@ -14,6 +14,7 @@ export interface MatchView {
   gameScore: string;
   status: string;
   stage: string;
+  slug: string;
   orderNumber: string;
   startAt: string;
 }
@@ -118,9 +119,14 @@ export function resolvePayloadByZone(
     return matchedByName;
   }
 
-  // 选择了明确站点但未匹配到时，返回空而不是首项，避免页面看起来“锁死在某个站点”
+  // 某些接口返回的分区标识与 live_game_info 不一致；匹配失败时回退到首个有对局数据的分区，避免整块空白。
   if (normalizedId || normalizedName) {
-    return null;
+    const firstWithMatch = buckets.find((item) => {
+      const current = item.currentMatch as Record<string, unknown> | undefined;
+      const next = item.nextMatch as Record<string, unknown> | undefined;
+      return Boolean(current || next);
+    });
+    return firstWithMatch ?? buckets[0];
   }
 
   return buckets[0];
@@ -159,6 +165,7 @@ export function toMatchView(data: unknown): MatchView | null {
     gameScore: `${redSideWinGameCount} : ${blueSideWinGameCount}`,
     status: toStringValue(asRecord.status),
     stage: toStringValue(asRecord.matchType),
+    slug: toStringValue(asRecord.slug),
     orderNumber: toStringValue(asRecord.orderNumber),
     startAt: formatFriendlyDateTime(asRecord.planStartedAt),
   };

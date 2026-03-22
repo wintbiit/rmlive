@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import Card from 'primevue/card';
-import Column from 'primevue/column';
-import DataTable from 'primevue/datatable';
 import Tab from 'primevue/tab';
 import TabList from 'primevue/tablist';
 import TabPanel from 'primevue/tabpanel';
 import TabPanels from 'primevue/tabpanels';
 import Tabs from 'primevue/tabs';
-import Tag from 'primevue/tag';
 import { computed, ref } from 'vue';
-import { getScheduleRows, isResultStatus, toStatusSeverity } from '../../services/scheduleView';
+import { getScheduleRows, isResultStatus } from '../../services/scheduleView';
 import type { Schedule } from '../../types/api';
-import TeamInfoCard from '../common/TeamInfoCard.vue';
+import ScheduleTableBlock from './ScheduleTableBlock.vue';
 
 interface Props {
   payload: Schedule | null;
@@ -26,19 +23,21 @@ const emit = defineEmits<{
 }>();
 const rows = computed(() => getScheduleRows(props.payload, props.selectedZoneId));
 const tab = ref<'schedule' | 'result'>('schedule');
-const scheduleRows = computed(() => rows.value.filter((item) => !isResultStatus(item.statusRaw)));
-const resultRows = computed(() => rows.value.filter((item) => isResultStatus(item.statusRaw)));
+const scheduleRows = computed(() =>
+  rows.value
+    .filter((item) => !isResultStatus(item.statusRaw))
+    .slice()
+    .sort((a, b) => a.startedAtTs - b.startedAtTs),
+);
+const resultRows = computed(() =>
+  rows.value
+    .filter((item) => isResultStatus(item.statusRaw))
+    .slice()
+    .sort((a, b) => b.startedAtTs - a.startedAtTs),
+);
 
 function onSelectTeam(teamName: string) {
   emit('teamSelect', teamName);
-}
-
-function toGroupLabel(teamName: string): string {
-  const meta = props.teamGroupMap?.[teamName];
-  if (!meta) {
-    return '';
-  }
-  return `${meta.group}组 #${meta.rank}`;
 }
 </script>
 
@@ -58,114 +57,11 @@ function toGroupLabel(teamName: string): string {
 
         <TabPanels>
           <TabPanel value="schedule">
-            <div class="table-wrap">
-              <DataTable
-                :value="scheduleRows"
-                paginator
-                :rows="8"
-                size="small"
-                stripedRows
-                tableStyle="min-width: 48rem"
-              >
-                <Column header="开赛时间">
-                  <template #body="{ data }">
-                    <span class="time-cell"><i class="pi pi-clock" />{{ data.dateTimeLabel }}</span>
-                  </template>
-                </Column>
-                <Column header="阶段">
-                  <template #body="{ data }">
-                    <Tag severity="secondary" :value="data.stage" />
-                  </template>
-                </Column>
-                <Column header="红方" style="min-width: 16rem">
-                  <template #body="{ data }">
-                    <div class="team-cell">
-                      <TeamInfoCard
-                        compact
-                        :team-name="data.redTeam.teamName"
-                        :college-name="data.redTeam.collegeName"
-                        :logo="data.redTeam.logo"
-                        :group-label="toGroupLabel(data.redTeam.teamName)"
-                        @select="onSelectTeam"
-                      />
-                    </div>
-                  </template>
-                </Column>
-                <Column header="蓝方" style="min-width: 16rem">
-                  <template #body="{ data }">
-                    <div class="team-cell">
-                      <TeamInfoCard
-                        compact
-                        :team-name="data.blueTeam.teamName"
-                        :college-name="data.blueTeam.collegeName"
-                        :logo="data.blueTeam.logo"
-                        :group-label="toGroupLabel(data.blueTeam.teamName)"
-                        @select="onSelectTeam"
-                      />
-                    </div>
-                  </template>
-                </Column>
-                <Column field="score" header="比分" />
-                <Column field="gameScore" header="小局" />
-                <Column header="状态">
-                  <template #body="{ data }">
-                    <Tag :severity="toStatusSeverity(data.statusRaw)" :value="data.status" />
-                  </template>
-                </Column>
-              </DataTable>
-            </div>
+            <ScheduleTableBlock :rows="scheduleRows" :team-group-map="props.teamGroupMap" @team-select="onSelectTeam" />
           </TabPanel>
 
           <TabPanel value="result">
-            <div class="table-wrap">
-              <DataTable :value="resultRows" paginator :rows="8" size="small" stripedRows tableStyle="min-width: 48rem">
-                <Column header="开赛时间">
-                  <template #body="{ data }">
-                    <span class="time-cell"><i class="pi pi-clock" />{{ data.dateTimeLabel }}</span>
-                  </template>
-                </Column>
-                <Column header="阶段">
-                  <template #body="{ data }">
-                    <Tag severity="secondary" :value="data.stage" />
-                  </template>
-                </Column>
-                <Column header="红方" style="min-width: 16rem">
-                  <template #body="{ data }">
-                    <div class="team-cell">
-                      <TeamInfoCard
-                        compact
-                        :team-name="data.redTeam.teamName"
-                        :college-name="data.redTeam.collegeName"
-                        :logo="data.redTeam.logo"
-                        :group-label="toGroupLabel(data.redTeam.teamName)"
-                        @select="onSelectTeam"
-                      />
-                    </div>
-                  </template>
-                </Column>
-                <Column header="蓝方" style="min-width: 16rem">
-                  <template #body="{ data }">
-                    <div class="team-cell">
-                      <TeamInfoCard
-                        compact
-                        :team-name="data.blueTeam.teamName"
-                        :college-name="data.blueTeam.collegeName"
-                        :logo="data.blueTeam.logo"
-                        :group-label="toGroupLabel(data.blueTeam.teamName)"
-                        @select="onSelectTeam"
-                      />
-                    </div>
-                  </template>
-                </Column>
-                <Column field="score" header="比分" />
-                <Column field="gameScore" header="小局" />
-                <Column header="状态">
-                  <template #body="{ data }">
-                    <Tag :severity="toStatusSeverity(data.statusRaw)" :value="data.status" />
-                  </template>
-                </Column>
-              </DataTable>
-            </div>
+            <ScheduleTableBlock :rows="resultRows" :team-group-map="props.teamGroupMap" @team-select="onSelectTeam" />
           </TabPanel>
         </TabPanels>
       </Tabs>
@@ -174,14 +70,6 @@ function toGroupLabel(teamName: string): string {
 </template>
 
 <style scoped>
-.table-wrap {
-  overflow-x: auto;
-}
-
-.team-cell {
-  min-width: 0;
-}
-
 .tab-title {
   display: inline-flex;
   align-items: center;
@@ -190,20 +78,5 @@ function toGroupLabel(teamName: string): string {
 
 .tab-title .pi {
   font-size: 0.76rem;
-}
-
-.time-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.time-cell .pi {
-  font-size: 0.72rem;
-  opacity: 0.78;
-}
-
-:deep(.p-datatable .p-datatable-tbody > tr > td) {
-  vertical-align: middle;
 }
 </style>

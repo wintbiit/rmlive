@@ -89,8 +89,6 @@ function onNextPanelCollapsedChange(collapsed: boolean) {
 <style scoped>
 .next-panel {
   margin-top: 0.6rem;
-  border: 1px solid rgb(148 163 184 / 0.24);
-  border-radius: 0.65rem;
 }
 
 .next-header {
@@ -114,7 +112,6 @@ function onNextPanelCollapsedChange(collapsed: boolean) {
   display: block;
   margin-top: 0.12rem;
   font-size: 0.76rem;
-  opacity: 0.78;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

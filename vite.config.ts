@@ -19,6 +19,19 @@ export default defineConfig(({ mode }) => {
           })
         : null,
     ].filter(Boolean),
+    server: {
+      proxy: {
+        '/rm-static': {
+          target: 'https://rm-static.djicdn.com/',
+          changeOrigin: true,
+          rewrite: (path) => {
+            path = path.replace(/^\/rm-static\//, '');
+            path = path.split('%3F')[0];
+            return path;
+          },
+        },
+      },
+    },
     build: {
       rollupOptions: {
         output: {

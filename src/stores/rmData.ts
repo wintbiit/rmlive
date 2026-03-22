@@ -1,11 +1,14 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { buildTeamGroupMap, extractGroupSections } from '../services/groupView';
 import {
   extractLiveZones,
+  fetchCurrentAndNextMatches,
   fetchGroupRankInfo,
+  fetchGroupsOrder,
   fetchLiveGameInfo,
   fetchRobotData,
+  fetchSchedule,
   pickDefaultZoneId,
   resolveLiveStreamUrl,
   startRmPolling,
@@ -43,11 +46,13 @@ export const useRmDataStore = defineStore('rm-data', () => {
 
   const selectedZoneId = ref<string | null>(null);
   const selectedQualityRes = ref<string | null>(null);
+  const hasManualZoneSelection = ref(false);
 
   const streamLoading = ref(true);
   const streamErrorMessage = ref('');
 
   let pollingController: RmPollingController | null = null;
+  let bootstrapSeq = 0;
 
   const liveZones = computed(() => extractLiveZones(liveGameInfo.value));
   const selectedZone = computed(() => {
@@ -55,7 +60,8 @@ export const useRmDataStore = defineStore('rm-data', () => {
       return null;
     }
 
-    return liveZones.value.find((zone) => zone.zoneId === selectedZoneId.value) ?? liveZones.value[0];
+    const targetId = normalizeZoneId(selectedZoneId.value);
+    return liveZones.value.find((zone) => normalizeZoneId(zone.zoneId) === targetId) ?? liveZones.value[0];
   });
   const selectedZoneName = computed(() => selectedZone.value?.zoneName ?? null);
 
@@ -117,6 +123,41 @@ export const useRmDataStore = defineStore('rm-data', () => {
     return ids;
   });
 
+  const scheduleZoneIdSet = computed(() => {
+    const payload = schedule.value;
+    if (!payload || typeof payload !== 'object') {
+      return new Set<string>();
+    }
+
+    const root = payload as Record<string, unknown>;
+    const fromGraph = (
+      ((root.data as Record<string, unknown> | undefined)?.event as Record<string, unknown> | undefined)?.zones as
+        | Record<string, unknown>
+        | undefined
+    )?.nodes;
+    const fromCurrentEvent = ((
+      (root.current_event as Record<string, unknown> | undefined)?.zones as Record<string, unknown> | undefined
+    )?.nodes ??
+      ((root.currentEvent as Record<string, unknown> | undefined)?.zones as Record<string, unknown> | undefined)
+        ?.nodes) as unknown;
+
+    const zones = Array.isArray(fromGraph)
+      ? (fromGraph as Record<string, unknown>[])
+      : Array.isArray(fromCurrentEvent)
+        ? (fromCurrentEvent as Record<string, unknown>[])
+        : [];
+
+    const ids = new Set<string>();
+    zones.forEach((item) => {
+      const id = normalizeZoneId((item as Record<string, unknown>).id);
+      if (id) {
+        ids.add(id);
+      }
+    });
+
+    return ids;
+  });
+
   function formatDate(value: number | null): string {
     if (!value) {
       return '-';
@@ -135,10 +176,11 @@ export const useRmDataStore = defineStore('rm-data', () => {
   }
 
   function resolveZoneUiState(zone: (typeof liveZones.value)[number], nowEpoch: number): ZoneUiState {
-    if (zone.liveState === 1 || inferredLiveZoneIdSet.value.has(normalizeZoneId(zone.zoneId))) {
+    if (zone.liveState === 1) {
       return 'live';
     }
 
+    // 如果有schedule时间表信息，用来判断是otherwise还是ended
     if (zone.startAt && nowEpoch < zone.startAt) {
       return 'upcoming';
     }
@@ -183,6 +225,7 @@ export const useRmDataStore = defineStore('rm-data', () => {
       }
 
       if (state === 'upcoming') {
+        const dateText = formatDate(item.startAt);
         return {
           label: item.zoneName,
           value: item.zoneId,
@@ -190,11 +233,12 @@ export const useRmDataStore = defineStore('rm-data', () => {
           icon: 'pi pi-clock',
           liveLogo: false,
           title: item.zoneName,
-          dateText: formatDate(item.startAt),
+          dateText,
           disabled: true,
         };
       }
 
+      const dateText = formatDate(item.endAt);
       return {
         label: item.zoneName,
         value: item.zoneId,
@@ -202,7 +246,7 @@ export const useRmDataStore = defineStore('rm-data', () => {
         icon: 'pi pi-check-circle',
         liveLogo: false,
         title: item.zoneName,
-        dateText: formatDate(item.endAt),
+        dateText,
         disabled: true,
       };
     });
@@ -222,19 +266,43 @@ export const useRmDataStore = defineStore('rm-data', () => {
   const streamUrl = computed(() =>
     resolveLiveStreamUrl(liveGameInfo.value, selectedZoneId.value, selectedQualityRes.value),
   );
+  const selectedZoneUiState = computed<ZoneUiState | null>(() => {
+    const zone = selectedZone.value;
+    if (!zone) {
+      return null;
+    }
+    return resolveZoneUiState(zone, Math.floor(Date.now() / 1000));
+  });
   const canPlaySelectedZone = computed(() => {
     const zone = selectedZone.value;
     if (!zone || zone.qualities.length === 0) {
       return false;
     }
 
+    // 只有当 liveState === 1 或在实时推断集合中时才能播放
     return zone.liveState === 1 || inferredLiveZoneIdSet.value.has(normalizeZoneId(zone.zoneId));
   });
   const effectiveStreamUrl = computed(() => (canPlaySelectedZone.value ? streamUrl.value : null));
   const effectiveStreamErrorMessage = computed(() => {
-    if (!canPlaySelectedZone.value && selectedZone.value) {
-      return `${selectedZone.value.zoneName} 当前未直播，请切换到直播中的站点`;
+    const zone = selectedZone.value;
+
+    // 兜底逻辑：如果无法播放且有zone被选中，显示zone相关的提示
+    if (!canPlaySelectedZone.value && zone) {
+      const state = selectedZoneUiState.value;
+
+      if (state === 'upcoming') {
+        return `${zone.zoneName} 尚未开播`;
+      }
+
+      if (state === 'ended') {
+        return `${zone.zoneName} 已完赛`;
+      }
+
+      // 其他无法播放的情况（offline或流不可用）
+      return `${zone.zoneName} 暂无可用直播流`;
     }
+
+    // 返回通用错误信息
     return streamErrorMessage.value;
   });
 
@@ -251,13 +319,47 @@ export const useRmDataStore = defineStore('rm-data', () => {
       return;
     }
 
-    const hasZone = options.some((item) => item.value === selectedZoneId.value && !item.disabled);
-    if (!hasZone) {
-      const zones = liveZones.value;
-      const preferred = pickDefaultZoneId(zones);
-      const preferredEnabled = preferred ? options.find((item) => item.value === preferred && !item.disabled) : null;
-      const fallbackEnabled = options.find((item) => !item.disabled);
-      selectedZoneId.value = preferredEnabled?.value ?? fallbackEnabled?.value ?? options[0].value;
+    const enabledOptions = options.filter((item) => !item.disabled);
+    const liveFromMatches = enabledOptions.find((item) => inferredLiveZoneIdSet.value.has(normalizeZoneId(item.value)));
+
+    const currentSelected = normalizeZoneId(selectedZoneId.value);
+    const currentOption = enabledOptions.find((item) => normalizeZoneId(item.value) === currentSelected) ?? null;
+
+    const zones = liveZones.value;
+    const preferred = pickDefaultZoneId(zones);
+    const withPlayableStream = enabledOptions.find((item) => {
+      const zone = zones.find((z) => normalizeZoneId(z.zoneId) === normalizeZoneId(item.value));
+      return Boolean(zone?.qualities?.[0]?.src);
+    });
+    const preferredEnabled = preferred
+      ? enabledOptions.find((item) => normalizeZoneId(item.value) === normalizeZoneId(preferred))
+      : null;
+    const withSchedule = enabledOptions.find((item) => scheduleZoneIdSet.value.has(normalizeZoneId(item.value)));
+    const fallbackEnabled = enabledOptions[0] ?? null;
+    const bestCandidate =
+      liveFromMatches?.value ??
+      withPlayableStream?.value ??
+      preferredEnabled?.value ??
+      withSchedule?.value ??
+      fallbackEnabled?.value ??
+      options[0].value;
+
+    if (!currentOption) {
+      selectedZoneId.value = bestCandidate;
+      return;
+    }
+
+    // 用户未手动切站点前，允许在首屏数据陆续到达时自动提升到更优站点。
+    if (!hasManualZoneSelection.value) {
+      const currentIsLive = inferredLiveZoneIdSet.value.has(normalizeZoneId(currentOption.value));
+      const shouldPromoteToLive = Boolean(liveFromMatches && !currentIsLive);
+      const currentZone = zones.find((z) => normalizeZoneId(z.zoneId) === normalizeZoneId(currentOption.value));
+      const currentHasPlayableStream = Boolean(currentZone?.qualities?.[0]?.src);
+      const shouldPromoteToPlayable = !currentHasPlayableStream && Boolean(withPlayableStream);
+
+      if (shouldPromoteToLive || shouldPromoteToPlayable) {
+        selectedZoneId.value = bestCandidate;
+      }
     }
   }
 
@@ -280,6 +382,7 @@ export const useRmDataStore = defineStore('rm-data', () => {
       return;
     }
 
+    hasManualZoneSelection.value = true;
     selectedZoneId.value = value;
     ensureQualitySelection();
   }
@@ -288,65 +391,139 @@ export const useRmDataStore = defineStore('rm-data', () => {
     selectedQualityRes.value = value;
   }
 
+  watch(
+    liveZones,
+    () => {
+      ensureZoneSelection();
+      ensureQualitySelection();
+    },
+    { immediate: true },
+  );
+
   function stopPolling() {
+    bootstrapSeq += 1;
     pollingController?.stopAll();
     pollingController = null;
   }
 
   function startPolling() {
     stopPolling();
+    hasManualZoneSelection.value = false;
+    streamLoading.value = true;
+    streamErrorMessage.value = '';
 
-    // 小组详细排名信息不需要轮询，仅在启动时拉取一次。
-    void fetchGroupRankInfo()
-      .then((data) => {
-        groupRankInfo.value = data;
-      })
-      .catch(() => {
-        // 失败时保持兜底展示，不影响主流程。
-      });
+    const seq = ++bootstrapSeq;
 
-    // 先做一次即时拉取，避免用户刚打开弹窗时看到空数据。
-    void fetchRobotData()
-      .then((data) => {
-        robotData.value = data;
-      })
-      .catch(() => {
-        // 后续轮询会继续重试，这里不阻断首屏流程。
-      });
+    void (async () => {
+      const startTime = Date.now();
+      const TOTAL_BOOTSTRAP_TIMEOUT_MS = 15000; // 整个bootstrap最多15秒
+      const PER_REQUEST_TIMEOUT_MS = 8000; // 每个单独请求最多8秒
 
-    pollingController = startRmPolling(
-      {
-        onLiveGameInfo(data) {
-          liveGameInfo.value = data;
-          ensureZoneSelection();
-          ensureQualitySelection();
-          streamLoading.value = false;
-          streamErrorMessage.value = '';
+      function withBootstrapTimeout<T>(promise: Promise<T>): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+          const elapsedTime = Date.now() - startTime;
+          const remainingTime = Math.max(1000, TOTAL_BOOTSTRAP_TIMEOUT_MS - elapsedTime); // 至少留1秒
+          const timeout = Math.min(PER_REQUEST_TIMEOUT_MS, remainingTime);
+
+          const timer = setTimeout(() => reject(new Error('bootstrap timeout')), timeout);
+          promise
+            .then((value) => {
+              clearTimeout(timer);
+              resolve(value);
+            })
+            .catch((error) => {
+              clearTimeout(timer);
+              reject(error);
+            });
+        });
+      }
+
+      const [
+        liveGameInfoResult,
+        currentAndNextResult,
+        groupsOrderResult,
+        scheduleResult,
+        robotResult,
+        groupRankResult,
+      ] = await Promise.allSettled([
+        withBootstrapTimeout(fetchLiveGameInfo()),
+        withBootstrapTimeout(fetchCurrentAndNextMatches()),
+        withBootstrapTimeout(fetchGroupsOrder()),
+        withBootstrapTimeout(fetchSchedule()),
+        withBootstrapTimeout(fetchRobotData()),
+        withBootstrapTimeout(fetchGroupRankInfo()),
+      ]);
+
+      if (seq !== bootstrapSeq) {
+        return;
+      }
+
+      if (liveGameInfoResult.status === 'fulfilled') {
+        liveGameInfo.value = liveGameInfoResult.value;
+      }
+
+      if (currentAndNextResult.status === 'fulfilled') {
+        currentAndNextMatches.value = currentAndNextResult.value;
+      }
+
+      if (groupsOrderResult.status === 'fulfilled') {
+        groupsOrder.value = groupsOrderResult.value;
+      }
+
+      if (scheduleResult.status === 'fulfilled') {
+        schedule.value = scheduleResult.value;
+      }
+
+      if (robotResult.status === 'fulfilled') {
+        robotData.value = robotResult.value;
+      }
+
+      if (groupRankResult.status === 'fulfilled') {
+        groupRankInfo.value = groupRankResult.value;
+      }
+
+      ensureZoneSelection();
+      ensureQualitySelection();
+
+      if (liveGameInfoResult.status === 'rejected') {
+        streamErrorMessage.value = '直播流请求失败，请检查网络后重试';
+      }
+
+      streamLoading.value = false;
+
+      pollingController = startRmPolling(
+        {
+          onLiveGameInfo(data) {
+            liveGameInfo.value = data;
+            ensureZoneSelection();
+            ensureQualitySelection();
+          },
+          onCurrentAndNextMatches(data) {
+            currentAndNextMatches.value = data;
+            ensureZoneSelection();
+          },
+          onGroupsOrder(data) {
+            groupsOrder.value = data;
+          },
+          onRobotData(data) {
+            robotData.value = data;
+          },
+          onSchedule(data) {
+            schedule.value = data;
+            ensureZoneSelection();
+          },
+          onError() {
+            if (!streamUrl.value) {
+              streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
+            }
+          },
         },
-        onCurrentAndNextMatches(data) {
-          currentAndNextMatches.value = data;
+        {},
+        {
+          robotDataDelayMs: 5000,
         },
-        onGroupsOrder(data) {
-          groupsOrder.value = data;
-        },
-        onRobotData(data) {
-          robotData.value = data;
-        },
-        onSchedule(data) {
-          schedule.value = data;
-        },
-        onError() {
-          streamLoading.value = false;
-          if (!streamUrl.value) {
-            streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
-          }
-        },
-      },
-      {},
-      {
-        robotDataDelayMs: 5000,
-      },
-    );
+      );
+    })();
   }
 
   async function retryLiveStream() {

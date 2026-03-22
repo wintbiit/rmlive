@@ -1,29 +1,33 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
-import Card from 'primevue/card';
 import Dialog from 'primevue/dialog';
-import InputGroup from 'primevue/inputgroup';
-import InputGroupAddon from 'primevue/inputgroupaddon';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
 import SelectButton from 'primevue/selectbutton';
 import Skeleton from 'primevue/skeleton';
+import Splitter from 'primevue/splitter';
+import SplitterPanel from 'primevue/splitterpanel';
 import Tag from 'primevue/tag';
 import Toast from 'primevue/toast';
 import ToggleButton from 'primevue/togglebutton';
+import Toolbar from 'primevue/toolbar';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import CurrentMatchPanel from './components/panels/CurrentMatchPanel.vue';
 import { resolveGroupRankSectionByGroup, resolveGroupRankSectionByTeam } from './services/groupRankView';
 import { buildImageUrl } from './services/urlProxy';
+import { useDanmuStore } from './stores/danmu';
 import { useRmDataStore } from './stores/rmData';
 import { useUiStore } from './stores/ui';
+import type { DanmuMessage } from './types/api';
 
 const LivePlayer = defineAsyncComponent(() => import('./components/live/LivePlayer.vue'));
+const DanmuPanel = defineAsyncComponent(() => import('./components/danmu/DanmuPanel.vue'));
 const SchedulePanel = defineAsyncComponent(() => import('./components/panels/SchedulePanel.vue'));
 const MobileSchedulePanel = defineAsyncComponent(() => import('./components/panels/MobileSchedulePanel.vue'));
 const RobotDataPanel = defineAsyncComponent(() => import('./components/panels/RobotDataPanel.vue'));
 
 const dataStore = useRmDataStore();
+const danmuStore = useDanmuStore();
 const uiStore = useUiStore();
 
 const {
@@ -41,6 +45,7 @@ const {
   zoneOptions,
   teamGroupMap,
   groupSections,
+  liveGameInfo,
 } = storeToRefs(dataStore);
 
 const { isDark, dataDialogVisible, dataDialogTeam, isMobile, nextMatchExpanded } = storeToRefs(uiStore);
@@ -166,6 +171,79 @@ const playerQualityOptions = computed(() => {
   }));
 });
 
+const selectedZoneChatRoomId = computed(() => {
+  const rawZoneId = String(selectedZoneId.value ?? '').trim();
+  const eventData = liveGameInfo.value?.eventData;
+  if (!rawZoneId || !Array.isArray(eventData)) {
+    return null;
+  }
+
+  const normalizeZoneId = (value: unknown) => {
+    const id = String(value ?? '').trim();
+    if (!id) {
+      return '';
+    }
+    const numeric = Number(id);
+    return Number.isFinite(numeric) ? String(numeric) : id;
+  };
+
+  const targetZoneId = normalizeZoneId(rawZoneId);
+  const matched = eventData.find((item) => {
+    const zone = item as Record<string, unknown>;
+    return normalizeZoneId(zone.zoneId) === targetZoneId;
+  }) as Record<string, unknown> | undefined;
+
+  const byMatchedZone = matched?.chatRoomId;
+  if (typeof byMatchedZone === 'string' && byMatchedZone.trim()) {
+    return byMatchedZone;
+  }
+
+  const selectedZoneNameValue = selectedZoneName.value;
+  if (selectedZoneNameValue) {
+    const byName = eventData.find((item) => {
+      const zone = item as Record<string, unknown>;
+      const zoneName = String(zone.zoneName ?? '').trim();
+      return zoneName === selectedZoneNameValue || zoneName.includes(selectedZoneNameValue);
+    }) as Record<string, unknown> | undefined;
+
+    const chatRoomId = byName?.chatRoomId;
+    if (typeof chatRoomId === 'string' && chatRoomId.trim()) {
+      return chatRoomId;
+    }
+  }
+
+  const fallback = eventData.find((item) => {
+    const zone = item as Record<string, unknown>;
+    return typeof zone.chatRoomId === 'string' && zone.chatRoomId.trim().length > 0;
+  }) as Record<string, unknown> | undefined;
+
+  const fallbackChatRoomId = fallback?.chatRoomId;
+  if (typeof fallbackChatRoomId === 'string' && fallbackChatRoomId.trim()) {
+    return fallbackChatRoomId;
+  }
+
+  return null;
+});
+
+function showZoneDate(option: { state: string; dateText: string }): boolean {
+  return (option.state === 'upcoming' || option.state === 'ended') && option.dateText !== '-';
+}
+
+const currentZoneOption = computed(() => {
+  return zoneOptions.value.find((item) => String(item.value) === String(selectedZoneId.value ?? '')) ?? null;
+});
+
+function onDanmuReceived(msg: DanmuMessage) {
+  danmuStore.pushMessage(msg);
+}
+
+watch(
+  () => selectedZoneChatRoomId.value,
+  () => {
+    danmuStore.resetMessages();
+  },
+);
+
 const onZoneChange = dataStore.setZone;
 const retryLiveStream = dataStore.retryLiveStream;
 
@@ -236,78 +314,80 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="app-shell">
-    <Toast position="top-center" />
-    <header class="brand-head">
-      <img :src="brandLogoUrl" alt="RMLive logo" class="brand-logo" />
-      <div>
-        <h1>RMLive - Better 直播间</h1>
-        <p>更清晰的赛事视图，更顺滑的直播体验</p>
-      </div>
-    </header>
-
-    <Card class="controls-card">
-      <template #content>
-        <div class="controls">
-          <div v-if="!isMobile" class="zone-select-button-wrap">
-            <SelectButton
-              :model-value="selectedZoneId"
-              :options="zoneOptions"
-              optionLabel="label"
-              optionValue="value"
-              optionDisabled="disabled"
-              fluid
-              size="small"
-              @update:model-value="onZoneChange"
-            >
-              <template #option="slotProps">
-                <span class="zone-option-item" :class="`state-${slotProps.option.state}`">
-                  <span v-if="slotProps.option.liveLogo" class="zone-start-badge" aria-hidden="true">
-                    <span class="zone-live-dot" />
-                    <span class="zone-live-text">LIVE</span>
-                  </span>
-                  <i v-else :class="slotProps.option.icon" aria-hidden="true" />
-                  <span class="zone-option-texts">
-                    <span class="zone-option-title">{{
-                      slotProps.option.title || slotProps.option.label || slotProps.option.value
-                    }}</span>
-                    <small v-if="slotProps.option.dateText">{{ slotProps.option.dateText }}</small>
-                  </span>
-                </span>
-              </template>
-            </SelectButton>
+    <Toast position="top-right" />
+    <Toolbar class="top-toolbar">
+      <template #start>
+        <div class="toolbar-brand">
+          <img :src="brandLogoUrl" alt="RMLive logo" class="brand-logo" />
+          <div class="toolbar-brand-meta">
+            <h1>RMLive - Better 直播间</h1>
+            <p>更清晰的赛事视图，更顺滑的直播体验</p>
           </div>
+        </div>
+      </template>
 
-          <InputGroup v-else class="zone-select">
-            <InputGroupAddon>
-              <i class="pi pi-map-marker" />
-            </InputGroupAddon>
-            <Select
-              :model-value="selectedZoneId"
-              :options="zoneOptions"
-              optionLabel="label"
-              optionValue="value"
-              optionDisabled="disabled"
-              size="small"
-              placeholder="站点"
-              @update:model-value="onZoneChange"
-            >
-              <template #option="slotProps">
-                <span class="zone-option-item" :class="`state-${slotProps.option.state}`">
-                  <span v-if="slotProps.option.liveLogo" class="zone-start-badge" aria-hidden="true">
-                    <span class="zone-live-dot" />
-                    <span class="zone-live-text">LIVE</span>
-                  </span>
-                  <i v-else :class="slotProps.option.icon" aria-hidden="true" />
-                  <span class="zone-option-texts">
-                    <span class="zone-option-title">{{
-                      slotProps.option.title || slotProps.option.label || slotProps.option.value
-                    }}</span>
-                    <small v-if="slotProps.option.dateText">{{ slotProps.option.dateText }}</small>
-                  </span>
+      <template #end>
+        <div class="toolbar-actions">
+          <SelectButton
+            v-if="!isMobile"
+            class="zone-select-button-wrap"
+            :model-value="selectedZoneId"
+            :options="zoneOptions"
+            optionLabel="label"
+            optionValue="value"
+            optionDisabled="disabled"
+            fluid
+            size="small"
+            @update:model-value="onZoneChange"
+          >
+            <template #option="slotProps">
+              <div class="zone-option-content">
+                <span v-if="slotProps.option.liveLogo" class="zone-live-prefix" aria-hidden="true">
+                  <i class="pi pi-video" />
                 </span>
-              </template>
-            </Select>
-          </InputGroup>
+                <span class="zone-option-text">
+                  <span class="zone-name">{{ slotProps.option.title }}</span>
+                  <span v-if="showZoneDate(slotProps.option)" class="zone-date">{{ slotProps.option.dateText }}</span>
+                </span>
+              </div>
+            </template>
+          </SelectButton>
+          <Select
+            v-else
+            class="zone-select"
+            :model-value="selectedZoneId"
+            :options="zoneOptions"
+            optionLabel="label"
+            optionValue="value"
+            optionDisabled="disabled"
+            size="small"
+            placeholder="站点"
+            @update:model-value="onZoneChange"
+          >
+            <template #value="slotProps">
+              <div v-if="currentZoneOption" class="zone-option-content">
+                <span v-if="currentZoneOption.liveLogo" class="zone-live-prefix" aria-hidden="true">
+                  <i class="pi pi-video" />
+                </span>
+                <span class="zone-option-text">
+                  <span class="zone-name">{{ currentZoneOption.title }}</span>
+                  <span v-if="showZoneDate(currentZoneOption)" class="zone-date">{{ currentZoneOption.dateText }}</span>
+                </span>
+              </div>
+              <span v-else>{{ slotProps.placeholder || '站点' }}</span>
+            </template>
+            <template #option="slotProps">
+              <div class="zone-option-content">
+                <span v-if="slotProps.option.liveLogo" class="zone-live-prefix" aria-hidden="true">
+                  <i class="pi pi-video" />
+                </span>
+                <span class="zone-option-text">
+                  <span class="zone-name">{{ slotProps.option.title }}</span>
+                  <span v-if="showZoneDate(slotProps.option)" class="zone-date">{{ slotProps.option.dateText }}</span>
+                </span>
+              </div>
+            </template>
+          </Select>
 
           <ToggleButton
             v-model="themeChecked"
@@ -316,12 +396,11 @@ onBeforeUnmount(() => {
             on-label=""
             off-label=""
             size="small"
-            class="theme-toggle-btn"
             aria-label="主题切换"
           />
         </div>
       </template>
-    </Card>
+    </Toolbar>
 
     <section class="match-hero">
       <CurrentMatchPanel
@@ -338,14 +417,40 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="main-grid">
-      <div class="live-column">
+      <!-- PC version with danmu panel on right -->
+      <Splitter v-if="!isMobile" layout="horizontal" :style="{ height: '100%' }">
+        <SplitterPanel :size="75" :minSize="50">
+          <div class="live-column">
+            <LivePlayer
+              :stream-url="effectiveStreamUrl"
+              :loading="streamLoading"
+              :error-message="effectiveStreamErrorMessage"
+              :quality-options="playerQualityOptions"
+              :selected-quality-res="selectedQualityRes"
+              :chat-room-id="selectedZoneChatRoomId"
+              @retry="retryLiveStream"
+              @danmu="onDanmuReceived"
+            />
+          </div>
+        </SplitterPanel>
+
+        <!-- Right danmu panel (PC only) -->
+        <SplitterPanel :size="25" :minSize="20" class="danmu-panel-wrap">
+          <DanmuPanel />
+        </SplitterPanel>
+      </Splitter>
+
+      <!-- Mobile version without danmu panel -->
+      <div v-else class="live-column">
         <LivePlayer
           :stream-url="effectiveStreamUrl"
           :loading="streamLoading"
           :error-message="effectiveStreamErrorMessage"
           :quality-options="playerQualityOptions"
           :selected-quality-res="selectedQualityRes"
+          :chat-room-id="selectedZoneChatRoomId"
           @retry="retryLiveStream"
+          @danmu="onDanmuReceived"
         />
       </div>
     </section>
@@ -388,7 +493,7 @@ onBeforeUnmount(() => {
             @keydown.space.prevent="onOpenTeamData(row.teamName)"
           >
             <div class="rank-main">
-              <Tag :value="`#${row.rankDisplay}`" severity="contrast" />
+              <Tag :value="`#${row.rankDisplay}`" :severity="row.isCurrent ? 'info' : 'contrast'" />
               <img
                 v-if="row.collegeLogo"
                 class="rank-team-logo"
@@ -433,22 +538,7 @@ onBeforeUnmount(() => {
   min-height: 100%;
 }
 
-:global(body) {
-  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: var(--app-fg);
-  background:
-    radial-gradient(1200px 500px at 80% -10%, var(--bg-radial), transparent 60%),
-    linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
-  transition:
-    background 220ms ease,
-    color 220ms ease;
-}
-
 :global(:root) {
-  --app-fg: #0f172a;
-  --bg-start: #f8fafc;
-  --bg-end: #e2e8f0;
-  --bg-radial: rgba(14, 165, 233, 0.2);
   /* 记分板主题颜色 */
   --scoreboard-bg-light: linear-gradient(135deg, rgba(219, 234, 254, 0.45), rgba(191, 219, 254, 0.35));
   --scoreboard-bg-dark: linear-gradient(135deg, rgb(2 6 23 / 0.72), rgb(30 58 138 / 0.34));
@@ -461,10 +551,6 @@ onBeforeUnmount(() => {
 }
 
 :global(html.app-dark) {
-  --app-fg: #e2e8f0;
-  --bg-start: #020617;
-  --bg-end: #0f172a;
-  --bg-radial: rgba(0, 112, 243, 0.22);
   /* 记分板主题颜色 */
   --scoreboard-bg-light: linear-gradient(135deg, rgb(2 6 23 / 0.72), rgb(30 58 138 / 0.34));
   --scoreboard-bg-dark: linear-gradient(135deg, rgb(2 6 23 / 0.72), rgb(30 58 138 / 0.34));
@@ -484,11 +570,14 @@ onBeforeUnmount(() => {
   overflow-x: clip;
 }
 
-.brand-head {
+.top-toolbar {
+  margin-bottom: 1rem;
+}
+
+.toolbar-brand {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  margin-bottom: 0.95rem;
+  gap: 0.65rem;
 }
 
 .brand-logo {
@@ -497,32 +586,22 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.brand-head h1 {
+.toolbar-brand-meta h1 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.02rem;
   line-height: 1.15;
 }
 
-.brand-head p {
+.toolbar-brand-meta p {
   margin: 0.18rem 0 0;
-  opacity: 0.75;
-  font-size: 0.84rem;
+  font-size: 0.78rem;
 }
 
-.controls-card {
-  margin-bottom: 1rem;
-}
-
-.controls-card :deep(.p-card-body) {
-  padding-top: 0.55rem;
-  padding-bottom: 0.55rem;
-}
-
-.controls {
+.toolbar-actions {
   display: flex;
-  gap: 0.45rem;
   align-items: center;
-  flex-wrap: nowrap;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .zone-select {
@@ -534,94 +613,45 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.zone-option-item {
+.zone-option-content {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
 }
 
-.zone-start-badge {
+.zone-live-prefix {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ef4444 22%, transparent);
+  color: #ef4444;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.24rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 999px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  background: linear-gradient(90deg, #dc2626, #f43f5e);
-  color: #fff;
-  box-shadow: 0 2px 8px rgb(244 63 94 / 0.34);
+  flex-shrink: 0;
 }
 
-.zone-live-dot {
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: 0 0 0 0 rgb(255 255 255 / 0.8);
-  animation: live-dot-pulse 1.6s ease-out infinite;
+.zone-live-prefix .pi {
+  font-size: 0.6rem;
 }
 
-.zone-live-text {
-  line-height: 1;
-}
-
-.zone-option-texts {
+.zone-option-text {
+  min-width: 0;
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
-  line-height: 1.05;
-  min-width: 0;
+  line-height: 1.1;
 }
 
-.zone-option-title {
-  font-weight: 600;
-  color: inherit;
+.zone-name {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 11rem;
 }
 
-.zone-option-texts small {
-  opacity: 0.72;
-}
-
-.zone-option-item.state-live > i {
-  color: #22c55e;
-}
-
-.zone-option-item.state-live .zone-option-title {
-  color: #16a34a;
-}
-
-.zone-option-item.state-offline i {
-  color: #f59e0b;
-}
-
-.zone-option-item.state-upcoming i {
-  color: #3b82f6;
-}
-
-.zone-option-item.state-ended i {
-  color: #94a3b8;
-}
-
-@keyframes live-dot-pulse {
-  70% {
-    box-shadow: 0 0 0 0.34rem rgb(255 255 255 / 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgb(255 255 255 / 0);
-  }
-}
-
-.theme-toggle-btn {
-  margin-left: auto;
+.zone-date {
+  font-size: 0.65rem;
+  opacity: 0.74;
+  white-space: nowrap;
 }
 
 :deep(.p-dialog) {
@@ -655,9 +685,6 @@ onBeforeUnmount(() => {
 }
 
 .group-block {
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 0.75rem;
-  padding: 0.7rem;
   margin-bottom: 0.8rem;
 }
 
@@ -678,10 +705,15 @@ onBeforeUnmount(() => {
 }
 
 .rank-row {
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  border-radius: 0.65rem;
-  padding: 0.5rem 0.6rem;
+  padding: 0.4rem 0;
   cursor: pointer;
+  border-radius: 0.55rem;
+}
+
+.rank-row.is-current-row {
+  background: color-mix(in srgb, var(--p-primary-500) 14%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--p-primary-500) 38%, transparent);
+  padding: 0.4rem 0.45rem;
 }
 
 .rank-main {
@@ -695,7 +727,6 @@ onBeforeUnmount(() => {
   height: 1.8rem;
   border-radius: 999px;
   object-fit: cover;
-  border: 1px solid rgba(148, 163, 184, 0.38);
   flex-shrink: 0;
 }
 
@@ -711,27 +742,24 @@ onBeforeUnmount(() => {
 
 .rank-meta small {
   display: block;
-  opacity: 0.72;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.rank-metrics {
-  margin-top: 0.4rem;
+.danmu-panel-wrap {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.rank-row.is-current-row {
-  border-color: rgba(59, 130, 246, 0.65);
-  background: rgba(59, 130, 246, 0.12);
+  flex-direction: column;
+  overflow: hidden;
 }
 
 @media (max-width: 1024px) {
   .lower-grid {
     grid-template-columns: 1fr;
+  }
+
+  .danmu-panel-wrap {
+    display: none;
   }
 }
 
@@ -740,31 +768,21 @@ onBeforeUnmount(() => {
     padding: 0.65rem;
   }
 
-  .brand-head {
-    margin-bottom: 0.75rem;
-  }
-
   .brand-logo {
     width: 34px;
     height: 34px;
   }
 
-  .brand-head h1 {
-    font-size: 1rem;
+  .toolbar-brand-meta h1 {
+    font-size: 0.92rem;
   }
 
-  .brand-head p {
-    font-size: 0.76rem;
+  .toolbar-brand-meta p {
+    display: none;
   }
 
-  .controls {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-
-  .controls > * {
-    min-width: 0;
+  .toolbar-actions {
+    gap: 0.35rem;
   }
 
   .zone-select {
@@ -774,18 +792,6 @@ onBeforeUnmount(() => {
 
   .zone-select-button-wrap {
     min-width: 0;
-  }
-
-  .theme-toggle-btn {
-    margin-left: 0;
-    justify-self: end;
-    width: fit-content;
-  }
-}
-
-@media (max-width: 520px) {
-  .theme-toggle-btn {
-    margin-left: 0;
   }
 }
 </style>

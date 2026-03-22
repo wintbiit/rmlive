@@ -68,3 +68,18 @@ export interface ScheduleEntry extends AnyRecord {
 }
 
 export type Schedule = ScheduleEntry[] | AnyRecord;
+
+// Danmu (Comments via Leancloud Realtime)
+export interface DanmuData {
+  text: string;
+  username: string;
+  nickname: string;
+  schoolName: string;
+  badge: string;
+}
+
+export interface DanmuMessage extends DanmuData {
+  id: string;
+  timestamp: number;
+  source?: 'history' | 'realtime';
+}

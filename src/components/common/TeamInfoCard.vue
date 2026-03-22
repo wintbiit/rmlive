@@ -52,8 +52,6 @@ const logoUrl = computed(() => buildImageUrl(props.logo));
 <style scoped>
 .team-info {
   display: block;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 0.8rem;
   padding: 0.55rem 0.6rem;
   min-height: 72px;
   box-sizing: border-box;
@@ -61,16 +59,6 @@ const logoUrl = computed(() => buildImageUrl(props.logo));
 
 .team-info.clickable {
   cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease,
-    background-color 0.2s ease;
-}
-
-.team-info.clickable:hover {
-  transform: translateY(-2px);
-  border-color: rgba(59, 130, 246, 0.6);
-  background: rgba(59, 130, 246, 0.08);
 }
 
 .team-info-inner {
@@ -84,7 +72,6 @@ const logoUrl = computed(() => buildImageUrl(props.logo));
   height: 42px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid rgba(148, 163, 184, 0.4);
   flex-shrink: 0;
 }
 
@@ -112,7 +99,6 @@ const logoUrl = computed(() => buildImageUrl(props.logo));
 .team-info p {
   margin: 0.15rem 0 0;
   font-size: 0.8rem;
-  opacity: 0.78;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -134,7 +120,6 @@ const logoUrl = computed(() => buildImageUrl(props.logo));
 .team-info.compact {
   min-height: 54px;
   padding: 0.35rem 0.45rem;
-  border-radius: 0.6rem;
 }
 
 .team-info.compact h4 {

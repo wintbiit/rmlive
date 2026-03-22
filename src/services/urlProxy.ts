@@ -28,7 +28,7 @@ export function appendNoCache(url: string): string {
 
 export function buildLiveJsonUrl(rawUrl: string): string {
   if (!hasStaticProxy()) {
-    return appendNoCache(rawUrl);
+    return rawUrl;
   }
 
   const ts = Date.now();
@@ -38,8 +38,7 @@ export function buildLiveJsonUrl(rawUrl: string): string {
   const embeddedNoCacheSuffix = `%3F_ts%3D${ts}`;
   const proxiedWithEmbeddedNoCache = buildStaticProxyUrl(`${rawUrl}${embeddedNoCacheSuffix}`);
 
-  // 保留外层参数作为兜底，兼容不同代理实现。
-  return appendNoCache(proxiedWithEmbeddedNoCache);
+  return proxiedWithEmbeddedNoCache;
 }
 
 export function buildImageUrl(rawUrl: string): string {

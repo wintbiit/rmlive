@@ -53,23 +53,27 @@ function getScoreParts(score: string | undefined) {
 
     <div v-if="match" class="match-body">
       <div class="team-row">
-        <TeamInfoCard
-          :compact="compact"
-          :team-name="match.redTeam.teamName"
-          :college-name="match.redTeam.collegeName"
-          :logo="match.redTeam.logo"
-          :group-label="toGroupLabel(match.redTeam.teamName)"
-          @select="onSelectTeam"
-        />
+        <div class="team-cell team-cell-red">
+          <TeamInfoCard
+            :compact="compact"
+            :team-name="match.redTeam.teamName"
+            :college-name="match.redTeam.collegeName"
+            :logo="match.redTeam.logo"
+            :group-label="toGroupLabel(match.redTeam.teamName)"
+            @select="onSelectTeam"
+          />
+        </div>
 
-        <TeamInfoCard
-          :compact="compact"
-          :team-name="match.blueTeam.teamName"
-          :college-name="match.blueTeam.collegeName"
-          :logo="match.blueTeam.logo"
-          :group-label="toGroupLabel(match.blueTeam.teamName)"
-          @select="onSelectTeam"
-        />
+        <div class="team-cell team-cell-blue">
+          <TeamInfoCard
+            :compact="compact"
+            :team-name="match.blueTeam.teamName"
+            :college-name="match.blueTeam.collegeName"
+            :logo="match.blueTeam.logo"
+            :group-label="toGroupLabel(match.blueTeam.teamName)"
+            @select="onSelectTeam"
+          />
+        </div>
       </div>
 
       <div v-if="hero" class="score-board" aria-label="当前对局比分">
@@ -90,6 +94,7 @@ function getScoreParts(score: string | undefined) {
 
     <template v-if="match">
       <div class="meta-strip">
+        <Tag severity="secondary" icon="pi pi-link" :value="`Slug ${match.slug}`" />
         <Tag severity="secondary" icon="pi pi-sitemap" :value="`阶段 ${match.stage}`" />
         <Tag severity="secondary" icon="pi pi-hashtag" :value="`场次 ${match.orderNumber}`" />
         <Tag severity="contrast" icon="pi pi-clock" :value="`${startPrefix} ${match.startAt}`" />
@@ -97,6 +102,7 @@ function getScoreParts(score: string | undefined) {
     </template>
     <template v-else>
       <div class="meta-strip meta-strip-empty">
+        <Tag severity="secondary" icon="pi pi-link" value="Slug -" />
         <Tag severity="secondary" icon="pi pi-sitemap" value="阶段 -" />
         <Tag severity="secondary" icon="pi pi-hashtag" value="场次 -" />
         <Tag severity="contrast" icon="pi pi-clock" :value="`${startPrefix} -`" />
@@ -113,7 +119,6 @@ function getScoreParts(score: string | undefined) {
 
 .block p {
   margin: 0.45rem 0 0;
-  opacity: 0.92;
 }
 
 .block-head {
@@ -130,15 +135,28 @@ function getScoreParts(score: string | undefined) {
   align-items: center;
 }
 
-.match-body {
-  margin-top: 0.62rem;
+.team-cell {
+  min-width: 0;
 }
 
-.hero-block {
-  border: 1px solid rgb(59 130 246 / 0.2);
-  border-radius: 0.9rem;
-  padding: 0.75rem;
-  background: linear-gradient(180deg, rgb(30 41 59 / 0.16), rgb(15 23 42 / 0.08));
+.team-cell-red :deep(.team-info-inner) {
+  flex-direction: row-reverse;
+}
+
+.team-cell-red :deep(.meta),
+.team-cell-red :deep(.head-row) {
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.team-cell-blue :deep(.meta),
+.team-cell-blue :deep(.head-row) {
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.match-body {
+  margin-top: 0.62rem;
 }
 
 .compact-block {

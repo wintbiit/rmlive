@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import Artplayer from 'artplayer';
+import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
 import Hls from 'hls.js';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';
 import { useToast } from 'primevue/usetoast';
 import { onBeforeUnmount, ref, watch } from 'vue';
+import { DanmuService } from '../../services/danmuService';
+import type { DanmuMessage } from '../../types/api';
 
 interface QualityOption {
   label: string;
@@ -19,6 +22,7 @@ interface Props {
   errorMessage: string;
   qualityOptions?: QualityOption[];
   selectedQualityRes?: string | null;
+  chatRoomId?: string | null;
 }
 
 const props = defineProps<Props>();
@@ -27,15 +31,180 @@ const hasShownAutoplayNotice = ref(false);
 
 const emit = defineEmits<{
   retry: [];
+  danmu: [msg: DanmuMessage];
 }>();
 
 const container = ref<HTMLDivElement | null>(null);
 let player: Artplayer | null = null;
+let playerReady = false;
+let danmukuPlugin: any = null;
+const pendingDanmuQueue: DanmuMessage[] = [];
+const danmuService = ref<DanmuService | null>(null);
+let currentRoomId: string | null = null;
+let roomSwitchToken = 0;
+let connectingService: DanmuService | null = null;
+
+async function destroyDanmu() {
+  if (connectingService) {
+    try {
+      await connectingService.disconnect();
+    } catch (error) {
+      console.warn('[LivePlayer] Ignore connectingService disconnect error:', error);
+    }
+    connectingService = null;
+  }
+
+  if (danmuService.value) {
+    try {
+      await danmuService.value.disconnect();
+    } catch (error) {
+      console.warn('[LivePlayer] Ignore danmuService disconnect error:', error);
+    }
+    danmuService.value = null;
+  }
+}
 
 function destroyPlayer() {
   if (player) {
     player.destroy(false);
     player = null;
+  }
+  danmukuPlugin = null;
+  playerReady = false;
+  pendingDanmuQueue.length = 0;
+}
+
+function pushDanmuToPlayer(msg: DanmuMessage) {
+  if (!player || !msg.text) {
+    return;
+  }
+
+  const payload = {
+    text: `${msg.username}${msg.nickname ? `(${msg.nickname})` : ''}: ${msg.text}`,
+    color: '#FFFFFF',
+    time: player.currentTime,
+    border: true,
+  };
+
+  if (playerReady && danmukuPlugin?.emit) {
+    danmukuPlugin.emit(payload);
+    return;
+  }
+
+  pendingDanmuQueue.push(msg);
+  if (pendingDanmuQueue.length > 120) {
+    pendingDanmuQueue.shift();
+  }
+}
+
+function flushPendingDanmu() {
+  if (!player || !playerReady || pendingDanmuQueue.length === 0) {
+    return;
+  }
+
+  const queue = pendingDanmuQueue.splice(0, pendingDanmuQueue.length);
+  queue.forEach((msg) => pushDanmuToPlayer(msg));
+}
+
+function createDebugDanmu(text?: string): DanmuMessage {
+  return {
+    id: `debug-${Date.now()}`,
+    timestamp: Date.now(),
+    text: text || '[DEBUG] 固定测试弹幕',
+    username: 'debug-user',
+    nickname: 'Debug',
+    schoolName: 'Local Debug Room',
+    badge: 'DEBUG',
+    source: 'realtime',
+  };
+}
+
+function exposeDanmuDebugApi() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  (window as any).__rmDanmuDebugLocal = (text?: string) => {
+    const debugMsg = createDebugDanmu(text);
+    emit('danmu', debugMsg);
+    pushDanmuToPlayer(debugMsg);
+    console.log('[LivePlayer][Debug] Local danmu injected:', debugMsg);
+    return debugMsg;
+  };
+
+  (window as any).__rmDanmuDebugSend = async (text?: string) => {
+    if (!danmuService.value) {
+      console.warn('[LivePlayer][Debug] danmuService not connected');
+      return false;
+    }
+
+    const content = text || '[DEBUG] 固定测试弹幕';
+    await danmuService.value.sendMessage(content, {
+      username: 'debug-user',
+      nickname: 'Debug',
+      schoolName: 'Local Debug Room',
+      badge: 'DEBUG',
+    });
+    console.log('[LivePlayer][Debug] Realtime send invoked:', content);
+    return true;
+  };
+}
+
+async function initDanmu(roomId: string) {
+  if (!roomId) {
+    return;
+  }
+
+  if (currentRoomId === roomId && danmuService.value) {
+    return;
+  }
+
+  const token = ++roomSwitchToken;
+  currentRoomId = roomId;
+
+  try {
+    await destroyDanmu();
+
+    const nextService = new DanmuService({
+      includeHistory: true,
+      onMessage: (msg) => {
+        if (token !== roomSwitchToken) {
+          return;
+        }
+        emit('danmu', msg);
+        if (msg.source !== 'history') {
+          pushDanmuToPlayer(msg);
+        }
+      },
+      onError: (error) => {
+        console.error('[LivePlayer] Danmu service error:', error);
+      },
+    });
+    connectingService = nextService;
+
+    await nextService.connect(roomId);
+    connectingService = null;
+
+    if (token !== roomSwitchToken) {
+      try {
+        await nextService.disconnect();
+      } catch (error) {
+        console.warn('[LivePlayer] Ignore stale service disconnect error:', error);
+      }
+      return;
+    }
+
+    danmuService.value = nextService;
+  } catch (error) {
+    if (connectingService) {
+      try {
+        await connectingService.disconnect();
+      } catch (disconnectError) {
+        console.warn('[LivePlayer] Ignore connect-failure cleanup error:', disconnectError);
+      }
+      connectingService = null;
+    }
+    console.error('[LivePlayer] ✗ Failed to init danmu:', error);
   }
 }
 
@@ -54,20 +223,32 @@ function mountPlayer(url: string) {
       default: item.value === props.selectedQualityRes,
     }));
 
-  player = new Artplayer({
+  const playerOptions: any = {
     container: container.value,
     url,
+    plugins: [
+      artplayerPluginDanmuku({
+        danmuku: [],
+        speed: 5,
+        margin: [10, '25%'],
+        opacity: 1,
+        fontSize: 22,
+        antiOverlap: true,
+        synchronousPlayback: true,
+        emitter: false,
+      }),
+    ],
     volume: 0.7,
     muted: true,
     autoplay: true,
-    setting: true,
+    setting: false,
     hotkey: true,
     pip: true,
     fullscreen: true,
     fullscreenWeb: true,
     quality: qualityItems.length > 1 ? qualityItems : undefined,
     customType: {
-      m3u8(video, m3u8Url) {
+      m3u8(video: HTMLVideoElement, m3u8Url: string) {
         if (Hls.isSupported()) {
           const hls = new Hls({
             lowLatencyMode: true,
@@ -85,19 +266,25 @@ function mountPlayer(url: string) {
         }
       },
     },
-  });
+  };
+
+  player = new Artplayer(playerOptions);
+  danmukuPlugin = (player as any).plugins?.artplayerPluginDanmuku;
 
   // Some browsers still require an explicit play attempt after source mount.
   player.on('ready', () => {
+    playerReady = true;
+    danmukuPlugin = (player as any).plugins?.artplayerPluginDanmuku;
+    flushPendingDanmu();
     try {
       player?.play();
       if (!hasShownAutoplayNotice.value) {
         hasShownAutoplayNotice.value = true;
         toast.add({
           severity: 'info',
-          summary: '已自动播放',
-          detail: '已为你自动开始播放（静音）',
+          summary: '已静音开播',
           life: 2000,
+          closable: true,
         });
       }
     } catch {
@@ -105,6 +292,22 @@ function mountPlayer(url: string) {
     }
   });
 }
+
+watch(
+  () => props.chatRoomId,
+  (roomId) => {
+    pendingDanmuQueue.length = 0;
+    if (roomId) {
+      void initDanmu(roomId);
+    } else {
+      currentRoomId = null;
+      roomSwitchToken += 1;
+      void destroyDanmu();
+    }
+  },
+);
+
+exposeDanmuDebugApi();
 
 watch(
   () => props.streamUrl,
@@ -118,7 +321,14 @@ watch(
   { immediate: true },
 );
 
-onBeforeUnmount(() => {
+onBeforeUnmount(async () => {
+  if (typeof window !== 'undefined') {
+    delete (window as any).__rmDanmuDebugLocal;
+    delete (window as any).__rmDanmuDebugSend;
+  }
+  roomSwitchToken += 1;
+  currentRoomId = null;
+  await destroyDanmu();
   destroyPlayer();
 });
 </script>
@@ -152,19 +362,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 260px;
   aspect-ratio: 16 / 9;
-  border-radius: 12px;
   overflow: hidden;
-  background: var(--player-shell-bg);
-}
-
-:global(:root) {
-  --player-shell-bg: #e2e8f0;
-  --player-overlay-bg: rgba(241, 245, 249, 0.72);
-}
-
-:global(html.app-dark) {
-  --player-shell-bg: #0f172a;
-  --player-overlay-bg: rgba(15, 23, 42, 0.35);
 }
 
 .player-container {
@@ -184,8 +382,6 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  backdrop-filter: blur(1px);
-  background: var(--player-overlay-bg);
 }
 
 .center {
@@ -212,7 +408,6 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .player-shell {
     min-height: 190px;
-    border-radius: 10px;
   }
 }
 </style>
