@@ -54,8 +54,14 @@ export const useDanmuStore = defineStore('danmu', () => {
 
   function addMessage(msg: DanmuMessage) {
     messages.value.unshift(msg);
+    messages.value.sort((a, b) => {
+      if (b.timestamp !== a.timestamp) {
+        return b.timestamp - a.timestamp;
+      }
+      return String(b.id).localeCompare(String(a.id));
+    });
     if (messages.value.length > maxMessages) {
-      messages.value.pop();
+      messages.value.length = maxMessages;
     }
   }
 
@@ -108,7 +114,6 @@ export const useDanmuStore = defineStore('danmu', () => {
     }
 
     lines.push(`时间: ${meta.timeLabel}`);
-    lines.push(`来源: ${meta.sourceLabel}`);
 
     return lines.join('\n');
   }
@@ -130,7 +135,7 @@ export const useDanmuStore = defineStore('danmu', () => {
       role: parsed?.role || '',
       username: shouldShowUsername ? username : '',
       sourceLabel: msg.source === 'history' ? '历史弹幕' : '实时弹幕',
-      timeLabel: new Date(msg.timestamp).toLocaleString(),
+      timeLabel: new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour12: false }),
     };
   }
 

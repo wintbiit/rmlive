@@ -42,7 +42,7 @@ const virtualItems = computed<Array<DanmuMessage | null>>(() => messages.value);
       </div>
     </div>
 
-    <ScrollTop target="parent" :threshold="120" icon="pi pi-arrow-up" />
+    <ScrollTop target=".danmu-virtual" :threshold="120" icon="pi pi-arrow-up" />
   </section>
 </template>
 

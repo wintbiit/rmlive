@@ -1,5 +1,8 @@
 ﻿<script setup lang="ts">
-import { computed } from 'vue';
+import Card from 'primevue/card';
+import Popover from 'primevue/popover';
+import Tag from 'primevue/tag';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { useDanmuStore } from '../../stores/danmu';
 import type { DanmuMessage } from '../../types/api';
 
@@ -12,62 +15,69 @@ const danmuStore = useDanmuStore();
 const school = computed(() => danmuStore.resolveDisplaySchool(props.message));
 const nickname = computed(() => danmuStore.resolveDisplayNickname(props.message));
 const tooltipMeta = computed(() => danmuStore.resolveTooltipMeta(props.message));
+const timeOnly = computed(() => new Date(props.message.timestamp).toLocaleTimeString('zh-CN', { hour12: false }));
 
-function escapeHtml(value: string): string {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+const tooltipRef = ref<any>(null);
+let hideTimer: number | null = null;
+
+function clearHideTimer() {
+  if (hideTimer !== null) {
+    window.clearTimeout(hideTimer);
+    hideTimer = null;
+  }
 }
 
-const tooltipHtml = computed(() => {
-  const meta = tooltipMeta.value;
-  const chips: string[] = [];
+function showTooltip(event: MouseEvent | FocusEvent) {
+  clearHideTimer();
+  tooltipRef.value?.show(event);
+}
 
-  if (meta.school) {
-    chips.push(`<span class="danmu-tip-chip danmu-tip-chip--school">${escapeHtml(meta.school)}</span>`);
-  }
-  if (meta.year) {
-    chips.push(`<span class="danmu-tip-chip">${escapeHtml(meta.year)}</span>`);
-  }
-  if (meta.role) {
-    chips.push(`<span class="danmu-tip-chip">${escapeHtml(meta.role)}</span>`);
-  }
+function scheduleHide() {
+  clearHideTimer();
+  hideTimer = window.setTimeout(() => {
+    tooltipRef.value?.hide();
+  }, 120);
+}
 
-  const usernameBlock = meta.username ? `<p class="danmu-tip-raw">${escapeHtml(meta.username)}</p>` : '';
-
-  return [
-    '<section class="danmu-tip-card">',
-    '  <header class="danmu-tip-head">',
-    `    <span class="danmu-tip-name">${escapeHtml(meta.nickname)}</span>`,
-    `    <span class="danmu-tip-source">${escapeHtml(meta.sourceLabel)}</span>`,
-    '  </header>',
-    `  <p class="danmu-tip-message">${escapeHtml(props.message.text)}</p>`,
-    chips.length ? `  <div class="danmu-tip-chips">${chips.join('')}</div>` : '',
-    usernameBlock,
-    `  <footer class="danmu-tip-time">${escapeHtml(meta.timeLabel)}</footer>`,
-    '</section>',
-  ].join('');
+onBeforeUnmount(() => {
+  clearHideTimer();
 });
+
+const year = computed(() => `${tooltipMeta.value.year}年${tooltipMeta.value.role}`);
 </script>
 
 <template>
   <article
-    v-tooltip.left="{
-      value: tooltipHtml,
-      escape: false,
-      showDelay: 120,
-      hideDelay: 80,
-    }"
     class="danmu-item"
+    tabindex="0"
+    @mouseenter="showTooltip"
+    @mouseleave="scheduleHide"
+    @focusin="showTooltip"
+    @focusout="scheduleHide"
   >
     <aside class="meta-col">
       <p class="school">{{ school }}</p>
       <p class="nickname">{{ nickname }}</p>
+      <p class="time">{{ timeOnly }}</p>
     </aside>
     <p class="content">{{ message.text }}</p>
+
+    <Popover ref="tooltipRef" :dismissable="false" class="danmu-tooltip-popover">
+      <div @mouseenter="clearHideTimer" @mouseleave="scheduleHide">
+        <Card class="danmu-tooltip-card">
+          <template #title>{{ tooltipMeta.nickname }}</template>
+          <template #content>
+            <p class="danmu-tooltip-message">{{ message.text }}</p>
+            <div class="danmu-tooltip-tags">
+              <Tag v-if="tooltipMeta.school" :value="tooltipMeta.school" severity="success" />
+              <Tag v-if="tooltipMeta.year" :value="year" severity="secondary" />
+            </div>
+            <p v-if="tooltipMeta.username" class="danmu-tooltip-raw">{{ tooltipMeta.username }}</p>
+            <p class="danmu-tooltip-time">{{ tooltipMeta.timeLabel }}</p>
+          </template>
+        </Card>
+      </div>
+    </Popover>
   </article>
 </template>
 
@@ -87,7 +97,8 @@ const tooltipHtml = computed(() => {
 }
 
 .school,
-.nickname {
+.nickname,
+.time {
   margin: 0;
   line-height: 1.2;
   white-space: nowrap;
@@ -105,6 +116,11 @@ const tooltipHtml = computed(() => {
   font-weight: 600;
 }
 
+.time {
+  font-size: 0.65rem;
+  opacity: 0.72;
+}
+
 .content {
   margin: 0;
   min-width: 0;
@@ -113,5 +129,62 @@ const tooltipHtml = computed(() => {
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+.danmu-tooltip-card {
+  width: min(16.5rem, calc(100vw - 2.2rem));
+}
+
+.danmu-tooltip-card :deep(.p-card-title) {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.danmu-tooltip-card :deep(.p-card-body) {
+  gap: 0.35rem;
+  padding: 0.5rem 0.58rem;
+}
+
+.danmu-tooltip-card :deep(.p-card-content) {
+  padding-top: 0;
+}
+
+.danmu-tooltip-card :deep(.p-tag) {
+  font-size: 0.62rem;
+  padding: 0.1rem 0.3rem;
+}
+
+.danmu-tooltip-message,
+.danmu-tooltip-raw,
+.danmu-tooltip-time {
+  margin: 0;
+}
+
+.danmu-tooltip-message {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.danmu-tooltip-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.28rem;
+}
+
+.danmu-tooltip-raw {
+  margin-top: 0.28rem;
+  font-size: 0.66rem;
+  opacity: 0.8;
+  word-break: break-all;
+}
+
+.danmu-tooltip-time {
+  margin-top: 0.25rem;
+  font-size: 0.64rem;
+  opacity: 0.7;
 }
 </style>

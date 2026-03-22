@@ -202,8 +202,13 @@ export class DanmuService {
   }
 
   private toTimestamp(value: unknown): number {
+    const normalizeEpoch = (epoch: number): number => {
+      // Some upstream fields are in seconds; normalize to milliseconds for consistent ordering/display.
+      return Math.abs(epoch) < 1_000_000_000_000 ? epoch * 1000 : epoch;
+    };
+
     if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
+      return normalizeEpoch(value);
     }
 
     if (value instanceof Date) {
@@ -213,7 +218,7 @@ export class DanmuService {
     if (typeof value === 'string' && value.trim()) {
       const numeric = Number(value);
       if (Number.isFinite(numeric)) {
-        return numeric;
+        return normalizeEpoch(numeric);
       }
 
       const parsed = Date.parse(value);
