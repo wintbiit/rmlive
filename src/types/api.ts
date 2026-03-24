@@ -91,6 +91,16 @@ export interface DanmuData {
   badge: string;
 }
 
+export interface DanmuAttributes {
+  nickname: string;
+  schoolName: string;
+  badge: string;
+  racingAge: string;
+  role: string;
+  isAdmin: boolean;
+  username?: string;
+}
+
 export interface DanmuMessage extends DanmuData {
   id: string;
   timestamp: number;

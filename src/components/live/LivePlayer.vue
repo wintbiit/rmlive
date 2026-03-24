@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { useDanmuStore } from '@/stores/danmu';
 import { useDanmuFilterStore } from '@/stores/danmuFilter';
+import { useUserInfoStore } from '@/stores/userInfo';
 import Artplayer, { Option } from 'artplayer';
 import artplayerPluginChromecast from 'artplayer-plugin-chromecast';
-import artplayerPluginDanmuku from 'artplayer-plugin-danmuku';
+import artplayerPluginDanmuku, { type Danmu } from 'artplayer-plugin-danmuku';
 import Hls from 'hls.js/dist/hls.light.mjs';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -11,7 +11,7 @@ import ProgressSpinner from 'primevue/progressspinner';
 import { useToast } from 'primevue/usetoast';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { DanmuService } from '../../services/danmuService';
-import type { DanmuMessage } from '../../types/api';
+import type { DanmuAttributes, DanmuMessage } from '../../types/api';
 
 interface QualityOption {
   label: string;
@@ -48,7 +48,43 @@ let roomSwitchToken = 0;
 let connectingService: DanmuService | null = null;
 
 const danmuFilterStore = useDanmuFilterStore();
-const danmuStore = useDanmuStore();
+const userInfoStore = useUserInfoStore();
+
+async function sendDanmuByRealtime(d: Danmu): Promise<boolean> {
+  const content = String(d?.text ?? '').trim();
+  if (!content) {
+    return false;
+  }
+
+  if (!userInfoStore.userInfo) {
+    toast.add({ severity: 'warn', summary: '请先登录', detail: '登录后才能发送弹幕' });
+    return false;
+  }
+
+  if (!danmuService.value) {
+    toast.add({ severity: 'warn', summary: '弹幕未连接', detail: '请稍后重试' });
+    return false;
+  }
+
+  const myAttributes: DanmuAttributes = {
+    nickname: userInfoStore.userInfo.nickname || '',
+    schoolName: userInfoStore.userInfo.school || '',
+    badge: userInfoStore.userInfo.badge?.[0] || '',
+    racingAge: String(userInfoStore.userInfo.racingAge ?? ''),
+    role: userInfoStore.userInfo.role || '',
+    isAdmin: false,
+    username: userInfoStore.userInfo.realName || userInfoStore.userInfo.nickname || '匿名用户',
+  };
+
+  try {
+    await danmuService.value.sendMessage(content, myAttributes);
+    return true;
+  } catch (error) {
+    console.error('[LivePlayer] Failed to send danmu:', error);
+    toast.add({ severity: 'error', summary: '发送失败', detail: '弹幕发送失败，请稍后重试' });
+    return false;
+  }
+}
 
 async function destroyDanmu() {
   if (connectingService) {
@@ -146,10 +182,13 @@ function exposeDanmuDebugApi() {
 
     const content = text || '[DEBUG] 固定测试弹幕';
     await danmuService.value.sendMessage(content, {
-      username: 'debug-user',
       nickname: 'Debug',
       schoolName: 'Local Debug Room',
       badge: 'DEBUG',
+      racingAge: '',
+      role: 'debug',
+      isAdmin: false,
+      username: 'debug-user',
     });
     console.log('[LivePlayer][Debug] Realtime send invoked:', content);
     return true;
@@ -241,9 +280,9 @@ function mountPlayer(url: string) {
         fontSize: 22,
         antiOverlap: true,
         synchronousPlayback: true,
-        emitter: false,
+        emitter: true,
         filter: danmuFilterStore.filter,
-        beforeEmit: danmuStore.sendDanmu,
+        beforeEmit: sendDanmuByRealtime,
       }),
       artplayerPluginChromecast({}),
     ],

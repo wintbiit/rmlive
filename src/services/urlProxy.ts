@@ -26,8 +26,12 @@ export function appendNoCache(url: string): string {
   return `${url}${separator}_ts=${Date.now()}`;
 }
 
+function shouldBypassStaticProxy(rawUrl: string): boolean {
+  return /[?&]noproxy=1(?:&|$)/.test(rawUrl);
+}
+
 export function buildLiveJsonUrl(rawUrl: string): string {
-  if (!hasStaticProxy()) {
+  if (!hasStaticProxy() || shouldBypassStaticProxy(rawUrl)) {
     return rawUrl;
   }
 

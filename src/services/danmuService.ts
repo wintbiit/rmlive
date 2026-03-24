@@ -1,6 +1,6 @@
 import { useLocalStorage } from '@vueuse/core';
 import { v4 as uuid } from 'uuid';
-import type { DanmuMessage } from '../types/api';
+import type { DanmuAttributes, DanmuMessage } from '../types/api';
 import { fetchJson } from './http';
 import { buildLiveJsonUrl } from './urlProxy';
 
@@ -391,14 +391,16 @@ export class DanmuService {
     }
   }
 
-  async sendMessage(text: string, attrs: Record<string, unknown> = {}): Promise<void> {
+  async sendMessage(text: string, attrs: DanmuAttributes): Promise<void> {
     if (!this.conversationInstance) {
       throw new Error('Danmu service not connected');
     }
 
     try {
       const { TextMessage } = await import('leancloud-realtime');
-      await this.conversationInstance.send(new TextMessage(text), { ...attrs });
+      const message = new TextMessage(text);
+      message.setAttributes(attrs);
+      await this.conversationInstance.send(message);
     } catch (error) {
       this.handlers.onError?.(error);
       throw error;
