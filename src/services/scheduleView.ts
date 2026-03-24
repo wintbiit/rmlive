@@ -7,6 +7,11 @@ export interface ReplayVideoInfo {
   coverUrl: string;
 }
 
+export interface ScheduleSchoolOption {
+  label: string;
+  value: string;
+}
+
 export interface ScheduleRowItem {
   id: string;
   slug: string;
@@ -57,6 +62,49 @@ export function toStatusSeverity(status: string): 'contrast' | 'warn' | 'success
 export function isResultStatus(status: string): boolean {
   const value = status.toUpperCase();
   return value === 'DONE' || value === 'FINISHED' || value === 'ENDED';
+}
+
+function normalizeSchoolName(value: string): string {
+  const name = String(value ?? '').trim();
+  if (!name || name === '-') {
+    return '';
+  }
+  return name;
+}
+
+export function getScheduleSchoolOptions(rows: ScheduleRowItem[]): ScheduleSchoolOption[] {
+  const names = new Set<string>();
+
+  rows.forEach((item) => {
+    const redSchool = normalizeSchoolName(item.redTeam.collegeName);
+    const blueSchool = normalizeSchoolName(item.blueTeam.collegeName);
+
+    if (redSchool) {
+      names.add(redSchool);
+    }
+
+    if (blueSchool) {
+      names.add(blueSchool);
+    }
+  });
+
+  return Array.from(names)
+    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    .map((name) => ({ label: name, value: name }));
+}
+
+export function filterScheduleRowsBySchool(rows: ScheduleRowItem[], schoolName: string | null): ScheduleRowItem[] {
+  const target = normalizeSchoolName(schoolName ?? '');
+  if (!target) {
+    return rows;
+  }
+
+  return rows.filter((item) => {
+    const redSchool = normalizeSchoolName(item.redTeam.collegeName);
+    const blueSchool = normalizeSchoolName(item.blueTeam.collegeName);
+
+    return redSchool === target || blueSchool === target;
+  });
 }
 
 function getZones(data: Schedule | null): Record<string, unknown>[] {

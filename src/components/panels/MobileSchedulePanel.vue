@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import Card from 'primevue/card';
+import Select from 'primevue/select';
 import Tab from 'primevue/tab';
 import TabList from 'primevue/tablist';
 import TabPanel from 'primevue/tabpanel';
 import TabPanels from 'primevue/tabpanels';
 import Tabs from 'primevue/tabs';
 import { computed, ref, watch } from 'vue';
-import { getScheduleRows, isResultStatus } from '../../services/scheduleView';
+import {
+  filterScheduleRowsBySchool,
+  getScheduleRows,
+  getScheduleSchoolOptions,
+  isResultStatus,
+} from '../../services/scheduleView';
 import type { LiveGameInfo, Schedule } from '../../types/api';
 import ScheduleCardList from './ScheduleCardList.vue';
 
@@ -24,17 +30,35 @@ const emit = defineEmits<{
 }>();
 const rows = computed(() => getScheduleRows(props.payload, props.selectedZoneId, props.liveGameInfo));
 const tab = ref<'schedule' | 'result'>('schedule');
+const selectedSchool = ref<string | null>(null);
+const schoolOptions = computed(() => getScheduleSchoolOptions(rows.value));
+const filteredRows = computed(() => filterScheduleRowsBySchool(rows.value, selectedSchool.value));
 const scheduleRows = computed(() =>
-  rows.value
+  filteredRows.value
     .filter((item) => !isResultStatus(item.statusRaw))
     .slice()
     .sort((a, b) => a.startedAtTs - b.startedAtTs),
 );
 const resultRows = computed(() =>
-  rows.value
+  filteredRows.value
     .filter((item) => isResultStatus(item.statusRaw))
     .slice()
     .sort((a, b) => b.startedAtTs - a.startedAtTs),
+);
+
+watch(
+  schoolOptions,
+  (options) => {
+    if (!selectedSchool.value) {
+      return;
+    }
+
+    const exists = options.some((option) => option.value === selectedSchool.value);
+    if (!exists) {
+      selectedSchool.value = null;
+    }
+  },
+  { immediate: true },
 );
 
 watch(
@@ -59,7 +83,22 @@ function onSelectTeam(teamName: string) {
 
 <template>
   <Card>
-    <template #title> 赛程安排 </template>
+    <template #title>
+      <div class="card-title-row">
+        <span>赛程安排</span>
+        <Select
+          v-model="selectedSchool"
+          class="school-filter"
+          size="small"
+          :options="schoolOptions"
+          optionLabel="label"
+          optionValue="value"
+          filter
+          showClear
+          placeholder="筛选学校"
+        />
+      </div>
+    </template>
     <template #content>
       <Tabs v-model:value="tab">
         <TabList>
@@ -91,6 +130,13 @@ function onSelectTeam(teamName: string) {
 </template>
 
 <style scoped>
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
 .tab-title {
   display: inline-flex;
   align-items: center;
@@ -99,5 +145,20 @@ function onSelectTeam(teamName: string) {
 
 .tab-title .pi {
   font-size: 0.76rem;
+}
+
+.school-filter {
+  width: min(22rem, 100%);
+}
+
+@media (max-width: 768px) {
+  .card-title-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .school-filter {
+    width: 100%;
+  }
 }
 </style>
