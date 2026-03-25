@@ -1,4 +1,4 @@
-import { userInfoRequestEvent, userInfoResponseEvent } from './stores/userInfo';
+import { userInfoRequestEvent, userInfoResponseEvent } from './constants/userInfoEvents';
 import { UserInfo } from './types/user';
 
 const iframe = document.createElement('iframe') as HTMLIFrameElement;

@@ -1,9 +1,7 @@
+import { userInfoRequestEvent, userInfoResponseEvent } from '@/constants/userInfoEvents';
 import { UserInfo } from '@/types/user';
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-
-export const userInfoRequestEvent = 'user-info-request';
-export const userInfoResponseEvent = 'user-info-response';
 
 export const useUserInfoStore = defineStore('userInfo', () => {
   const userInfo = ref<UserInfo | null>(null);
@@ -25,21 +23,21 @@ export const useUserInfoStore = defineStore('userInfo', () => {
     isRequesting.value = true;
 
     try {
-      // Set up timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        const timer = setTimeout(() => {
-          reject(new Error('Request timeout'));
-        }, 5000); // 5 second timeout
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-        // Store timer reference for potential cleanup (though this promise will reject)
-        (timeoutPromise as any).__timer = timer;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Request timeout'));
+        }, 5000);
       });
 
       // Wait for response with timeout
       const responseHandler = new Promise<UserInfo | null>((resolve) => {
         const handler = (e: CustomEvent<UserInfo | null>) => {
           window.removeEventListener(userInfoResponseEvent, handler as EventListener);
-          clearTimeout((timeoutPromise as any).__timer);
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
           resolve(e.detail);
         };
         window.addEventListener(userInfoResponseEvent, handler as EventListener);

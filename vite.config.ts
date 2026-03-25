@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => {
     // Build iframe-inject.js as a standalone IIFE
     return {
       plugins: [],
+      define: {
+        'process.env.NODE_ENV': JSON.stringify('production'),
+      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, './src'),
