@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
           formats: ['iife'],
         },
         outDir: 'dist',
+        // Keep existing app assets in dist when running iframe build after main build.
+        emptyOutDir: false,
         rollupOptions: {
           output: {
             entryFileNames: 'iframe-inject.js',
