@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import Dialog from 'primevue/dialog';
+import Listbox from 'primevue/listbox';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { resolveGroupRankSectionByGroup, resolveGroupRankSectionByTeam } from '../../services/groupRankView';
 import type { GroupSection } from '../../services/groupView';
 import {
@@ -30,8 +31,6 @@ const emit = defineEmits<{
   'update:visible': [visible: boolean];
   'team-select': [teamName: string];
 }>();
-
-const rankTableWrapRef = ref<HTMLElement | null>(null);
 
 const dialogTeamGroupSection = computed(() => findDialogTeamGroupSection(props.groupSections, props.selectedTeam));
 
@@ -67,27 +66,29 @@ const rankSectionTitle = computed(
   () => dialogRankSection.value?.groupName ?? dialogTeamGroupSection.value?.group ?? '当前组',
 );
 const compactRankRows = computed(() => sortedDialogRankRows.value.slice(0, 8));
-
-function scrollToCurrentRankRow() {
-  if (!props.visible) {
-    return;
-  }
-
-  const wrap = rankTableWrapRef.value;
-  if (!wrap) {
-    return;
-  }
-
-  const row = wrap.querySelector('.rank-row.is-current-row') as HTMLElement | null;
-  row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-}
+const selectedRankTeam = ref<string | null>(null);
+const rankListOptions = computed(() =>
+  compactRankRows.value.map((row) => ({
+    ...row,
+    label: row.teamName,
+    value: row.teamName,
+  })),
+);
 
 watch(
-  () => [props.visible, props.selectedTeam, sortedDialogRankRows.value.length],
-  () => {
-    void nextTick(() => scrollToCurrentRankRow());
+  () => props.selectedTeam,
+  (team) => {
+    selectedRankTeam.value = team;
   },
+  { immediate: true },
 );
+
+watch(selectedRankTeam, (team) => {
+  if (!team || team === props.selectedTeam) {
+    return;
+  }
+  onOpenTeamData(team);
+});
 
 function onDialogVisibleChange(value: boolean) {
   emit('update:visible', value);
@@ -112,41 +113,43 @@ function onOpenTeamData(teamName: string) {
   >
     <section v-if="hasGroupRankSection" class="group-block">
       <h3>{{ rankSectionTitle }} 组排名</h3>
-      <div v-if="compactRankRows.length" ref="rankTableWrapRef" class="group-rank-table-wrap">
-        <article
-          v-for="row in compactRankRows"
-          :key="`${rankSectionTitle}-${row.teamName}-${row.rankDisplay}`"
-          class="rank-row"
-          :class="{ 'is-current-row': row.isCurrent }"
-          role="button"
-          tabindex="0"
-          @click="onOpenTeamData(row.teamName)"
-          @keydown.enter.prevent="onOpenTeamData(row.teamName)"
-          @keydown.space.prevent="onOpenTeamData(row.teamName)"
-        >
-          <div class="rank-main">
-            <Tag :value="`#${row.rankDisplay}`" :severity="row.isCurrent ? 'info' : 'contrast'" />
-            <TeamLogo
-              v-if="row.collegeLogo"
-              :logo="row.collegeLogo"
-              :team-name="row.teamName"
-              custom-size="1.8rem"
-              class="rank-team-logo"
-            />
-            <div class="rank-meta">
-              <strong>{{ row.teamName }}</strong>
-              <small>{{ row.collegeName }}</small>
+      <Listbox
+        v-if="rankListOptions.length"
+        v-model="selectedRankTeam"
+        :options="rankListOptions"
+        option-label="label"
+        option-value="value"
+        class="rank-listbox"
+        list-style="max-height: 20rem"
+      >
+        <template #option="slotProps">
+          <div class="rank-option">
+            <div class="rank-main">
+              <Tag
+                :value="`#${slotProps.option.rankDisplay}`"
+                :severity="slotProps.option.isCurrent ? 'info' : 'contrast'"
+              />
+              <TeamLogo
+                v-if="slotProps.option.collegeLogo"
+                :logo="slotProps.option.collegeLogo"
+                :team-name="slotProps.option.teamName"
+                custom-size="1.6rem"
+                class="rank-team-logo"
+              />
+              <div class="rank-meta">
+                <strong>{{ slotProps.option.teamName }}</strong>
+                <small>{{ slotProps.option.collegeName }}</small>
+              </div>
+              <Tag v-if="slotProps.option.isCurrent" value="当前查看" severity="info" />
             </div>
-            <Tag v-if="row.isCurrent" value="当前查看" severity="info" />
+            <div class="rank-metrics">
+              <Tag :value="`胜平负 ${slotProps.option.winDrawLose}`" severity="secondary" />
+              <Tag :value="`积分 ${slotProps.option.points}`" severity="secondary" />
+              <Tag :value="`净胜 ${slotProps.option.netVictoryPoint}`" severity="secondary" />
+            </div>
           </div>
-
-          <div class="rank-metrics">
-            <Tag :value="`胜平负 ${row.winDrawLose}`" severity="secondary" />
-            <Tag :value="`积分 ${row.points}`" severity="secondary" />
-            <Tag :value="`净胜 ${row.netVictoryPoint}`" severity="secondary" />
-          </div>
-        </article>
-      </div>
+        </template>
+      </Listbox>
       <Message v-else severity="warn" :closable="false" class="rank-empty-tip">
         当前组暂无可展示的详细排名数据
       </Message>
@@ -175,23 +178,14 @@ function onOpenTeamData(teamName: string) {
   margin-top: 0.55rem;
 }
 
-.group-rank-table-wrap {
-  overflow: auto;
-  max-height: 20rem;
+.rank-listbox {
+  margin-top: 0.2rem;
+}
+
+.rank-option {
   display: grid;
-  gap: 0.45rem;
-}
-
-.rank-row {
-  padding: 0.4rem 0;
-  cursor: pointer;
-  border-radius: 0.55rem;
-}
-
-.rank-row.is-current-row {
-  background: color-mix(in srgb, var(--p-primary-500) 14%, transparent);
-  outline: 1px solid color-mix(in srgb, var(--p-primary-500) 38%, transparent);
-  padding: 0.4rem 0.45rem;
+  gap: 0.4rem;
+  width: 100%;
 }
 
 .rank-main {
@@ -219,5 +213,11 @@ function onOpenTeamData(teamName: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rank-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 </style>

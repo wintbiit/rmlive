@@ -6,7 +6,35 @@ import { defineConfig } from 'vite';
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const isAnalyze = mode === 'analyze';
+  const isBuildIFrame = process.env.VITE_BUILD_IFRAME === 'true' || mode === 'iframe';
 
+  if (isBuildIFrame) {
+    // Build iframe-inject.js as a standalone IIFE
+    return {
+      plugins: [],
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, './src'),
+        },
+      },
+      build: {
+        lib: {
+          entry: path.resolve(__dirname, './src/iframe-inject.ts'),
+          name: 'RmLiveInjector',
+          formats: ['iife'],
+        },
+        outDir: 'dist',
+        rollupOptions: {
+          output: {
+            entryFileNames: 'iframe-inject.js',
+          },
+        },
+        minify: 'terser',
+      },
+    };
+  }
+
+  // Main application build configuration
   return {
     base: process.env.VITE_BASE ?? '/',
     plugins: [

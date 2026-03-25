@@ -11,7 +11,8 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     env:
-      VITE_STATIC_PROXY: ${{ vars.VITE_STATIC_PROXY }}
+      VITE_IMG_PROXY: ${{ vars.VITE_IMG_PROXY }}
+      VITE_LIVEJSON_PROXY: ${{ vars.VITE_LIVEJSON_PROXY }}
       VITE_CHATROOM_APP_ID: ${{ secrets.VITE_CHATROOM_APP_ID }}
       VITE_CHATROOM_APP_KEY: ${{ secrets.VITE_CHATROOM_APP_KEY }}
     steps:
@@ -31,7 +32,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm build
+        run: pnpm build && pnpm build:iframe
 
       - name: Deploy to Tencent COS
         uses: TencentCloud/cos-action@v1

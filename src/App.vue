@@ -16,6 +16,12 @@ import { useRmDataStore } from './stores/rmData';
 import { useUiStore } from './stores/ui';
 import type { DanmuMessage } from './types/api';
 
+interface TeamSelectPayload {
+  teamName: string;
+  zoneId?: string | null;
+  zoneName?: string | null;
+}
+
 const MatchDataDialog = defineAsyncComponent(() => import('./components/dialogs/MatchDataDialog.vue'));
 
 const dataStore = useRmDataStore();
@@ -43,6 +49,8 @@ const {
 const { isDark, isMobile, nextMatchExpanded } = storeToRefs(uiStore);
 const dataDialogVisible = ref(false);
 const dataDialogTeam = ref<string | null>(null);
+const dataDialogZoneId = ref<string | null>(null);
+const dataDialogZoneName = ref<string | null>(null);
 
 const playerQualityOptions = computed(() => toPlayerQualityOptions(selectedZone.value));
 const scheduleEventTitle = computed(() => getScheduleEventTitle(schedule.value));
@@ -64,12 +72,17 @@ const onThemeChange = uiStore.setDarkMode;
 const onNextExpandedChange = uiStore.setNextMatchExpanded;
 const enableSecondaryPanels = ref(false);
 
-function onOpenTeamData(teamName: string) {
+function onOpenTeamData(payload: string | TeamSelectPayload) {
+  const teamName = typeof payload === 'string' ? payload : payload.teamName;
   if (!teamName || teamName === '-') {
     return;
   }
 
   dataDialogTeam.value = teamName;
+  dataDialogZoneId.value =
+    typeof payload === 'string' ? selectedZoneId.value : (payload.zoneId ?? selectedZoneId.value);
+  dataDialogZoneName.value =
+    typeof payload === 'string' ? selectedZoneName.value : (payload.zoneName ?? selectedZoneName.value);
   dataDialogVisible.value = true;
 }
 
@@ -144,8 +157,8 @@ onBeforeUnmount(() => {
     <MatchDataDialog
       v-model:visible="dataDialogVisible"
       :selected-team="dataDialogTeam"
-      :selected-zone-id="selectedZoneId"
-      :selected-zone-name="selectedZoneName"
+      :selected-zone-id="dataDialogZoneId"
+      :selected-zone-name="dataDialogZoneName"
       :group-sections="groupSections"
       :group-rank-info="groupRankInfo"
       :robot-data="robotData"

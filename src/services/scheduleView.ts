@@ -35,6 +35,10 @@ export interface ScheduleRowItem {
   statusRaw: string;
   status: string;
   replayVideo: ReplayVideoInfo | null;
+  planGameCount: number;
+  zoneId: string;
+  zoneName: string;
+  eventTitle: string;
 }
 
 export function toStatusLabel(status: string): string {
@@ -187,59 +191,57 @@ function toVideoInfo(entry: ReplayVideoEntry): { matchId: string; replay: Replay
   };
 }
 
-function buildReplayMap(data: LiveGameInfo | null, selectedZoneId: string | null): Map<string, ReplayVideoInfo> {
+function buildReplayMap(data: LiveGameInfo | null): Map<string, ReplayVideoInfo> {
   const zones = getLiveZones(data);
   if (!zones.length) {
     return new Map();
   }
 
-  const zone = zones.find((item) => String(item.zoneId ?? '') === String(selectedZoneId ?? '')) ?? zones[0];
-  const videos = Array.isArray(zone?.videos) ? zone.videos : [];
+  return zones.reduce((map, zone) => {
+    const videos = Array.isArray(zone?.videos) ? zone.videos : [];
+    videos.forEach((video) => {
+      const info = toVideoInfo(video);
+      if (!info) {
+        return;
+      }
 
-  return videos.reduce((map, video) => {
-    const info = toVideoInfo(video);
-    if (!info) {
-      return map;
-    }
-
-    if (!map.has(info.matchId)) {
-      map.set(info.matchId, info.replay);
-    }
+      if (!map.has(info.matchId)) {
+        map.set(info.matchId, info.replay);
+      }
+    });
     return map;
   }, new Map<string, ReplayVideoInfo>());
 }
 
-export function getScheduleRows(
-  data: Schedule | null,
-  selectedZoneId: string | null,
-  liveGameInfo?: LiveGameInfo | null,
-): ScheduleRowItem[] {
+export function getScheduleRows(data: Schedule | null, liveGameInfo?: LiveGameInfo | null): ScheduleRowItem[] {
   const zones = getZones(data);
   if (!zones.length) {
     return [];
   }
 
-  const replayMap = buildReplayMap(liveGameInfo ?? null, selectedZoneId);
+  const replayMap = buildReplayMap(liveGameInfo ?? null);
+  const eventTitle = getScheduleEventTitle(data);
 
-  const zone = zones.find((item) => {
-    if (!item || typeof item !== 'object') {
-      return false;
+  const allItems: ScheduleRowItem[] = [];
+
+  // Iterate through ALL zones and aggregate matches
+  zones.forEach((zone) => {
+    if (!zone || typeof zone !== 'object') {
+      return;
     }
 
-    return String((item as Record<string, unknown>).id ?? '') === String(selectedZoneId ?? '');
-  }) as Record<string, unknown> | undefined;
+    const zoneObj = zone as Record<string, unknown>;
+    const zoneId = String(zoneObj.id ?? zoneObj.zoneId ?? '').trim();
+    const zoneName = String(zoneObj.zoneName ?? zoneObj.name ?? zoneObj.title ?? '').trim();
 
-  const targetZone = zone ?? (zones[0] as Record<string, unknown>);
+    const groupMatches = ((zoneObj.groupMatches as Record<string, unknown> | undefined)?.nodes ?? []) as unknown[];
+    const knockoutMatches = ((zoneObj.knockoutMatches as Record<string, unknown> | undefined)?.nodes ??
+      []) as unknown[];
+    const allMatches = [...groupMatches, ...knockoutMatches];
 
-  const groupMatches = ((targetZone.groupMatches as Record<string, unknown> | undefined)?.nodes ?? []) as unknown[];
-  const knockoutMatches = ((targetZone.knockoutMatches as Record<string, unknown> | undefined)?.nodes ??
-    []) as unknown[];
-  const allMatches = [...groupMatches, ...knockoutMatches];
-
-  return allMatches
-    .map((item) => {
+    allMatches.forEach((item) => {
       if (!item || typeof item !== 'object') {
-        return null;
+        return;
       }
 
       const match = item as Record<string, unknown>;
@@ -255,15 +257,23 @@ export function getScheduleRows(
       const blueTeam = bluePlayer?.team as Record<string, unknown> | undefined;
       const redTeam = redPlayer?.team as Record<string, unknown> | undefined;
 
-      const blueTeamName = String(blueTeam?.name ?? match.winnerPlaceholdName ?? '-');
-      const redTeamName = String(redTeam?.name ?? match.loserPlaceholdName ?? '-');
+      const blueTeamRawName = String(blueTeam?.name ?? '').trim();
+      const redTeamRawName = String(redTeam?.name ?? '').trim();
+
+      if (!redTeamRawName && !blueTeamRawName) {
+        return;
+      }
+
+      const blueTeamName = String(blueTeamRawName || match.winnerPlaceholdName || '-');
+      const redTeamName = String(redTeamRawName || match.loserPlaceholdName || '-');
 
       const blueSideWinGameCount = Number(match.blueSideWinGameCount ?? 0);
       const redSideWinGameCount = Number(match.redSideWinGameCount ?? 0);
       const status = String(match.status ?? '-');
       const matchId = String(match.id ?? '-');
+      const planGameCount = Number(match.planGameCount ?? 0);
 
-      return {
+      const rowItem: ScheduleRowItem = {
         id: matchId,
         slug: String(match.slug ?? '-'),
         orderNumber: String(match.orderNumber ?? '-'),
@@ -286,7 +296,180 @@ export function getScheduleRows(
         statusRaw: status,
         status: toStatusLabel(status),
         replayVideo: replayMap.get(matchId) ?? null,
+        planGameCount,
+        zoneId: zoneId || '-',
+        zoneName: zoneName || '未分配站点',
+        eventTitle,
       };
+
+      allItems.push(rowItem);
+    });
+  });
+
+  return allItems;
+}
+
+function normalizeTeamName(value: string): string {
+  const name = String(value ?? '').trim();
+  if (!name || name === '-') {
+    return '';
+  }
+  return name;
+}
+
+export interface ScheduleZoneOption {
+  label: string;
+  value: string;
+}
+
+export interface ScheduleTeamOption {
+  label: string;
+  value: string;
+}
+
+export interface ScheduleDateGroup {
+  date: string;
+  dateLabel: string;
+  items: ScheduleRowItem[];
+}
+
+function toDateGroupKey(item: ScheduleRowItem): string {
+  if (item.startedAtTs > 0) {
+    const d = new Date(item.startedAtTs);
+    if (!Number.isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  }
+
+  const normalized = String(item.date ?? '')
+    .replace(/\//g, '-')
+    .trim();
+  const match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    const [, y, m, d] = match;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  return 'unknown';
+}
+
+export function filterScheduleRowsByTeam(rows: ScheduleRowItem[], teamName: string | null): ScheduleRowItem[] {
+  const target = normalizeTeamName(teamName ?? '');
+  if (!target) {
+    return rows;
+  }
+
+  return rows.filter((item) => {
+    const redTeam = normalizeTeamName(item.redTeam.teamName);
+    const blueTeam = normalizeTeamName(item.blueTeam.teamName);
+
+    return redTeam === target || blueTeam === target;
+  });
+}
+
+export function filterScheduleRowsByZone(rows: ScheduleRowItem[], zoneId: string | null): ScheduleRowItem[] {
+  const target = String(zoneId ?? '').trim();
+  if (!target) {
+    return rows;
+  }
+
+  return rows.filter((item) => String(item.zoneId ?? '') === target);
+}
+
+export function getZoneNameOptions(rows: ScheduleRowItem[]): ScheduleZoneOption[] {
+  const zoneMap = new Map<string, ScheduleZoneOption>();
+  rows.forEach((item) => {
+    const zoneName = String(item.zoneName ?? '').trim();
+    const zoneId = String(item.zoneId ?? '').trim();
+    if (zoneName && zoneName !== '-') {
+      const key = zoneId || zoneName;
+      if (!zoneMap.has(key)) {
+        zoneMap.set(key, {
+          label: zoneName,
+          value: key,
+        });
+      }
+    }
+  });
+
+  return Array.from(zoneMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
+}
+
+export function getTeamNameOptions(rows: ScheduleRowItem[]): ScheduleTeamOption[] {
+  const teams = new Set<string>();
+
+  rows.forEach((item) => {
+    const redTeam = normalizeTeamName(item.redTeam.teamName);
+    const blueTeam = normalizeTeamName(item.blueTeam.teamName);
+
+    if (redTeam) {
+      teams.add(redTeam);
+    }
+
+    if (blueTeam) {
+      teams.add(blueTeam);
+    }
+  });
+
+  return Array.from(teams)
+    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    .map((name) => ({ label: name, value: name }));
+}
+
+export function getRecentMatches(rows: ScheduleRowItem[], zoneId: string | null, limit = 5): ScheduleRowItem[] {
+  const zoneRows = filterScheduleRowsByZone(rows, zoneId);
+
+  const completed = zoneRows
+    .filter((item) => isResultStatus(item.statusRaw))
+    .slice()
+    .sort((a, b) => b.startedAtTs - a.startedAtTs);
+
+  const upcoming = zoneRows
+    .filter((item) => !isResultStatus(item.statusRaw))
+    .slice()
+    .sort((a, b) => a.startedAtTs - b.startedAtTs);
+
+  const completedCount = Math.min(2, completed.length);
+  const upcomingCount = Math.min(limit - completedCount, upcoming.length);
+
+  return [...completed.slice(0, completedCount), ...upcoming.slice(0, upcomingCount)];
+}
+
+export function groupScheduleRowsByDate(rows: ScheduleRowItem[], order: 'asc' | 'desc' = 'asc'): ScheduleDateGroup[] {
+  const groups = new Map<string, ScheduleRowItem[]>();
+
+  rows.forEach((item) => {
+    const dateKey = toDateGroupKey(item);
+    if (!groups.has(dateKey)) {
+      groups.set(dateKey, []);
+    }
+    groups.get(dateKey)!.push(item);
+  });
+
+  return Array.from(groups.entries())
+    .sort((a, b) => {
+      if (a[0] === 'unknown') {
+        return 1;
+      }
+      if (b[0] === 'unknown') {
+        return -1;
+      }
+      const diff = new Date(a[0]).getTime() - new Date(b[0]).getTime();
+      return order === 'desc' ? -diff : diff;
     })
-    .filter((item): item is ScheduleRowItem => item !== null);
+    .map(([date, items]) => {
+      let displayDate = '未定日期';
+      if (date !== 'unknown') {
+        const [, month, day] = date.split('-');
+        displayDate = `${Number(month)}-${day}`;
+      }
+      return {
+        date,
+        dateLabel: displayDate,
+        items,
+      };
+    });
 }

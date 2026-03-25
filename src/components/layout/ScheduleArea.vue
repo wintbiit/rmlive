@@ -3,6 +3,12 @@ import Skeleton from 'primevue/skeleton';
 import { defineAsyncComponent } from 'vue';
 import type { LiveGameInfo, Schedule } from '../../types/api';
 
+interface TeamSelectPayload {
+  teamName: string;
+  zoneId?: string | null;
+  zoneName?: string | null;
+}
+
 interface Props {
   isMobile: boolean;
   enabled: boolean;
@@ -15,14 +21,13 @@ interface Props {
 defineProps<Props>();
 
 const emit = defineEmits<{
-  teamSelect: [teamName: string];
+  teamSelect: [payload: TeamSelectPayload];
 }>();
 
 const SchedulePanel = defineAsyncComponent(() => import('../panels/SchedulePanel.vue'));
-const MobileSchedulePanel = defineAsyncComponent(() => import('../panels/MobileSchedulePanel.vue'));
 
-function onTeamSelect(teamName: string) {
-  emit('teamSelect', teamName);
+function onTeamSelect(payload: TeamSelectPayload) {
+  emit('teamSelect', payload);
 }
 </script>
 
@@ -30,19 +35,11 @@ function onTeamSelect(teamName: string) {
   <section class="lower-grid">
     <div v-if="enabled" class="schedule-cell">
       <SchedulePanel
-        v-if="!isMobile"
         :payload="payload"
         :live-game-info="liveGameInfo"
         :selected-zone-id="selectedZoneId"
         :team-group-map="teamGroupMap"
-        @team-select="onTeamSelect"
-      />
-      <MobileSchedulePanel
-        v-else
-        :payload="payload"
-        :live-game-info="liveGameInfo"
-        :selected-zone-id="selectedZoneId"
-        :team-group-map="teamGroupMap"
+        :is-mobile="isMobile"
         @team-select="onTeamSelect"
       />
     </div>

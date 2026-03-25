@@ -7,16 +7,22 @@ interface Props {
   collegeName?: string;
   logo?: string;
   groupLabel?: string;
+  showGroupLabel?: boolean;
+  showCollegeName?: boolean;
   clickable?: boolean;
   compact?: boolean;
+  logoPosition?: 'left' | 'right';
 }
 
 const props = withDefaults(defineProps<Props>(), {
   collegeName: '-',
   logo: '',
   groupLabel: '',
+  showGroupLabel: true,
+  showCollegeName: true,
   clickable: true,
   compact: false,
+  logoPosition: 'left',
 });
 
 const emit = defineEmits<{
@@ -32,15 +38,15 @@ function onClick() {
 </script>
 
 <template>
-  <article class="team-info" :class="{ compact, clickable }" @click="onClick">
+  <article class="team-info" :class="{ compact, clickable, 'logo-right': logoPosition === 'right' }" @click="onClick">
     <div class="team-info-inner">
       <TeamLogo :logo="logo" :team-name="teamName" />
       <div class="meta">
         <div class="head-row">
           <h4>{{ teamName }}</h4>
-          <Tag v-if="groupLabel" :value="groupLabel" severity="info" class="group-tag" />
+          <Tag v-if="showGroupLabel && groupLabel" :value="groupLabel" severity="info" class="group-tag" />
         </div>
-        <p>{{ collegeName || '-' }}</p>
+        <p v-if="showCollegeName">{{ collegeName || '-' }}</p>
       </div>
     </div>
   </article>
@@ -50,7 +56,6 @@ function onClick() {
 .team-info {
   display: block;
   padding: 0.55rem 0.6rem;
-  min-height: 72px;
   box-sizing: border-box;
 }
 
@@ -62,6 +67,22 @@ function onClick() {
   display: flex;
   align-items: flex-start;
   gap: 0.6rem;
+}
+
+.team-info-inner.logo-right {
+  flex-direction: row-reverse;
+}
+
+.team-info.logo-right .team-info-inner {
+  flex-direction: row-reverse;
+}
+
+.team-info.logo-right .meta {
+  text-align: right;
+}
+
+.team-info.logo-right .head-row {
+  justify-content: flex-end;
 }
 
 :deep(.team-logo) {
@@ -77,6 +98,11 @@ function onClick() {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
+}
+
+.head-row h4 {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -98,7 +124,8 @@ function onClick() {
 }
 
 .group-tag {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .group-tag :deep(.p-tag-label) {
@@ -111,7 +138,6 @@ function onClick() {
 }
 
 .team-info.compact {
-  min-height: 54px;
   padding: 0.35rem 0.45rem;
 }
 

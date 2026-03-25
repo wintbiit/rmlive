@@ -1,0 +1,436 @@
+<script setup lang="ts">
+import Button from 'primevue/button';
+import Card from 'primevue/card';
+import Tag from 'primevue/tag';
+import { computed, ref } from 'vue';
+import { isResultStatus, type ScheduleRowItem } from '../../services/scheduleView';
+import TeamInfoCard from '../common/TeamInfoCard.vue';
+import ReplayVideoDialog from '../dialogs/ReplayVideoDialog.vue';
+
+interface TeamSelectPayload {
+  teamName: string;
+  zoneId?: string | null;
+  zoneName?: string | null;
+}
+
+interface Props {
+  item: ScheduleRowItem;
+  teamGroupMap?: Record<string, { group: string; rank: string }>;
+  compact?: boolean;
+}
+
+const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  teamSelect: [payload: TeamSelectPayload];
+}>();
+
+function onSelectTeam(teamName: string) {
+  emit('teamSelect', {
+    teamName,
+    zoneId: props.item.zoneId,
+    zoneName: props.item.zoneName,
+  });
+}
+
+function toGroupLabel(teamName: string): string {
+  const meta = props.teamGroupMap?.[teamName];
+  return meta ? `${meta.group}组 #${meta.rank}` : '';
+}
+
+function getBOLabel(planGameCount: number): string {
+  if (planGameCount === 2) {
+    return 'BO2';
+  }
+  if (planGameCount === 3) {
+    return 'BO3';
+  }
+  return planGameCount > 0 ? `BO${planGameCount}` : 'BO?';
+}
+
+function getScoreParts(score: string): { red: number; blue: number } {
+  const [red = '0', blue = '0'] = score.split(':').map((item) => item.trim());
+  return {
+    red: Number(red) || 0,
+    blue: Number(blue) || 0,
+  };
+}
+
+const scoreParts = computed(() => getScoreParts(props.item.score));
+const upperStatus = computed(() => props.item.statusRaw.toUpperCase());
+const matchTime = computed(() => {
+  const value = String(props.item.time || '').trim();
+  return value.length >= 5 ? value.slice(0, 5) : '--:--';
+});
+const liveRoundText = computed(() => {
+  const round = scoreParts.value.red + scoreParts.value.blue + 1;
+  return round > 0 ? `第${round}局` : '';
+});
+
+const matchOrderText = computed(() => {
+  const raw = String(props.item.orderNumber ?? '').trim();
+  if (!raw || raw === '-') {
+    return '场次待定';
+  }
+
+  return `#${raw}`;
+});
+
+const canShowReplay = computed(() => Boolean(props.item.replayVideo));
+
+const replayVisible = ref(false);
+
+function openReplay() {
+  if (!props.item.replayVideo) {
+    return;
+  }
+  replayVisible.value = true;
+}
+</script>
+
+<template>
+  <Card class="schedule-item" :class="{ compact: props.compact }">
+    <template #content>
+      <header class="item-header">
+        <span class="event-title">{{ item.eventTitle || '赛事' }}</span>
+        <div class="header-center">
+          <span class="time-text">{{ matchTime }}</span>
+          <Button
+            v-if="canShowReplay"
+            icon="pi pi-play-circle"
+            rounded
+            text
+            severity="secondary"
+            size="small"
+            aria-label="查看回放"
+            @click="openReplay"
+          />
+        </div>
+        <div class="header-meta">
+          <Tag :value="item.zoneName || `站点 ${item.zoneId || '-'}`" severity="secondary" />
+          <Tag :value="matchOrderText" severity="contrast" />
+        </div>
+      </header>
+
+      <div class="item-content">
+        <div class="team-column red-column">
+          <TeamInfoCard
+            :compact="props.compact"
+            :team-name="item.redTeam.teamName"
+            :college-name="item.redTeam.collegeName"
+            :logo="item.redTeam.logo"
+            :group-label="toGroupLabel(item.redTeam.teamName)"
+            :show-group-label="!props.compact"
+            :show-college-name="!props.compact"
+            logo-position="right"
+            @select="onSelectTeam"
+          />
+        </div>
+
+        <div class="center-column">
+          <Tag :value="getBOLabel(item.planGameCount)" severity="info" />
+          <div class="status-row">
+            <div v-if="upperStatus === 'WAITING'" class="waiting-space" />
+            <div v-else-if="upperStatus === 'STARTED' || upperStatus === 'PLAYING'" class="live-wrap">
+              <div class="live-pill">
+                <i class="pi pi-circle-fill" />
+                <span>LIVE</span>
+              </div>
+              <span class="round-text">{{ liveRoundText }}</span>
+            </div>
+            <div v-else-if="isResultStatus(item.statusRaw)" class="score-row">
+              <span class="score-value" :class="{ winner: scoreParts.red > scoreParts.blue }">{{
+                scoreParts.red
+              }}</span>
+              <span class="score-sep">-</span>
+              <span class="score-value" :class="{ winner: scoreParts.blue > scoreParts.red }">{{
+                scoreParts.blue
+              }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="team-column blue-column">
+          <TeamInfoCard
+            :compact="props.compact"
+            :team-name="item.blueTeam.teamName"
+            :college-name="item.blueTeam.collegeName"
+            :logo="item.blueTeam.logo"
+            :group-label="toGroupLabel(item.blueTeam.teamName)"
+            :show-group-label="!props.compact"
+            :show-college-name="!props.compact"
+            @select="onSelectTeam"
+          />
+        </div>
+      </div>
+
+      <ReplayVideoDialog
+        v-if="item.replayVideo"
+        v-model:visible="replayVisible"
+        :title="item.replayVideo.title"
+        :video-url="item.replayVideo.url"
+        :cover-url="item.replayVideo.coverUrl"
+      />
+    </template>
+  </Card>
+</template>
+
+<style scoped>
+.schedule-item {
+  margin-bottom: 0.4rem;
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  box-shadow: 0 8px 14px rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  background: var(--surface-card);
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.schedule-item :deep(.p-card-body) {
+  padding: 0.45rem 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.schedule-item :deep(.p-card-content) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.event-title {
+  flex: 1 1 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-center {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.header-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.header-meta :deep(.p-tag) {
+  max-width: 9rem;
+}
+
+.header-meta :deep(.p-tag-label) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.time-text {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+}
+
+.item-content {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+  overflow: hidden;
+}
+
+.team-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.red-column :deep(.team-info) {
+  text-align: right;
+}
+
+.center-column {
+  flex: 0 0 3.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.waiting-space {
+  width: 1px;
+  height: 2.2rem;
+  opacity: 0;
+}
+
+.live-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.12);
+  color: #f97316;
+  animation: live-breathe 1.4s ease-in-out infinite;
+}
+
+.live-pill .pi {
+  font-size: 0.55rem;
+}
+
+.round-text {
+  font-size: 0.78rem;
+  color: var(--text-color-secondary);
+}
+
+.score-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.score-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--text-color-secondary);
+}
+
+.score-value.winner {
+  color: #22c55e;
+}
+
+.score-sep {
+  font-size: 1.1rem;
+  color: var(--text-color-secondary);
+}
+
+.schedule-item.compact :deep(.p-card-body) {
+  padding: 0.36rem 0.4rem;
+}
+
+@keyframes live-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .item-header {
+    gap: 0.18rem;
+    flex-wrap: wrap;
+  }
+
+  .event-title {
+    font-size: 0.74rem;
+  }
+
+  .header-meta {
+    gap: 0.12rem;
+    margin-left: auto;
+  }
+
+  .header-meta :deep(.p-tag) {
+    max-width: 4.2rem;
+  }
+
+  .header-meta :deep(.p-tag-label) {
+    font-size: 0.6rem;
+  }
+
+  .item-content {
+    gap: 0.18rem;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .team-column :deep(.team-info) {
+    padding: 0.1rem 0.15rem;
+  }
+
+  .team-column :deep(.team-logo-wrapper) {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .team-column :deep(h4) {
+    font-size: 0.7rem;
+  }
+
+  .team-column :deep(p) {
+    font-size: 0.6rem;
+  }
+
+  .center-column {
+    flex: 0 0 2.6rem;
+    gap: 0.15rem;
+  }
+
+  .center-column :deep(.p-tag-label) {
+    font-size: 0.58rem;
+  }
+
+  .time-text {
+    font-size: 0.72rem;
+  }
+
+  .score-value {
+    font-size: 0.8rem;
+  }
+
+  .score-row {
+    gap: 0.12rem;
+  }
+
+  .score-sep {
+    font-size: 0.72rem;
+  }
+
+  .live-pill {
+    padding: 0.1rem 0.16rem;
+    gap: 0.08rem;
+    font-size: 0.54rem;
+  }
+
+  .round-text {
+    font-size: 0.54rem;
+  }
+}
+</style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import Panel from 'primevue/panel';
+import { Fieldset } from 'primevue';
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
 import { defineAsyncComponent } from 'vue';
@@ -75,11 +75,11 @@ function onDanmu(msg: DanmuMessage) {
         @danmu="onDanmu"
       />
 
-      <Panel header="弹幕列表" toggleable collapsed class="mobile-danmu-panel">
+      <Fieldset legend="弹幕列表" toggleable class="mobile-danmu-panel">
         <div class="mobile-danmu-wrap">
           <DanmuPanel />
         </div>
-      </Panel>
+      </Fieldset>
     </div>
   </section>
 </template>
@@ -101,8 +101,8 @@ function onDanmu(msg: DanmuMessage) {
 }
 
 .mobile-danmu-wrap {
-  height: 16rem;
-  min-height: 12rem;
+  height: 24rem;
+  min-height: 16rem;
 }
 
 .danmu-panel-wrap {

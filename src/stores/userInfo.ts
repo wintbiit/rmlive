@@ -1,5 +1,4 @@
 import { UserInfo } from '@/types/user';
-import { useEventListener } from '@vueuse/core';
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
@@ -8,19 +7,82 @@ export const userInfoResponseEvent = 'user-info-response';
 
 export const useUserInfoStore = defineStore('userInfo', () => {
   const userInfo = ref<UserInfo | null>(null);
+  const isRequesting = ref(false);
 
   const isIFrame = window.self !== window.top;
 
-  if (window.parent && isIFrame) {
-    useEventListener(window, userInfoResponseEvent, (e: CustomEvent<UserInfo | null>) => {
-      userInfo.value = e.detail;
-    });
+  const requestUserInfo = async (retryCount = 0): Promise<void> => {
+    if (userInfo.value) {
+      // Already have data, no need to request
+      return;
+    }
 
-    // start requesting user info now
-    setInterval(() => {
+    if (isRequesting.value) {
+      // Request in progress, wait for it
+      return;
+    }
+
+    isRequesting.value = true;
+
+    try {
+      // Set up timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error('Request timeout'));
+        }, 5000); // 5 second timeout
+
+        // Store timer reference for potential cleanup (though this promise will reject)
+        (timeoutPromise as any).__timer = timer;
+      });
+
+      // Wait for response with timeout
+      const responseHandler = new Promise<UserInfo | null>((resolve) => {
+        const handler = (e: CustomEvent<UserInfo | null>) => {
+          window.removeEventListener(userInfoResponseEvent, handler as EventListener);
+          clearTimeout((timeoutPromise as any).__timer);
+          resolve(e.detail);
+        };
+        window.addEventListener(userInfoResponseEvent, handler as EventListener);
+      });
+
+      // Send request to parent
       window.parent.dispatchEvent(new CustomEvent(userInfoRequestEvent));
-    }, 1000);
-    window.parent.dispatchEvent(new CustomEvent(userInfoRequestEvent));
+
+      // Race between response and timeout
+      const response = await Promise.race([responseHandler, timeoutPromise]);
+      userInfo.value = response;
+
+      if (response) {
+        console.log('[rmlive] User info received:', response);
+      } else if (retryCount < 3) {
+        console.warn(`[rmlive] User info request failed, retry ${retryCount + 1}/3`);
+        isRequesting.value = false;
+        // Exponential backoff: 500ms, 1s, 2s
+        const delays = [500, 1000, 2000];
+        await new Promise((resolve) => setTimeout(resolve, delays[retryCount] || 2000));
+        await requestUserInfo(retryCount + 1);
+      }
+    } catch (error) {
+      if (retryCount < 3) {
+        console.warn(
+          `[rmlive] User info request error: ${error instanceof Error ? error.message : String(error)}, retry ${retryCount + 1}/3`,
+        );
+        isRequesting.value = false;
+        // Exponential backoff: 500ms, 1s, 2s
+        const delays = [500, 1000, 2000];
+        await new Promise((resolve) => setTimeout(resolve, delays[retryCount] || 2000));
+        await requestUserInfo(retryCount + 1);
+      } else {
+        console.error('[rmlive] User info request failed after 3 retries:', error);
+      }
+    } finally {
+      isRequesting.value = false;
+    }
+  };
+
+  if (window.parent && isIFrame) {
+    // Request user info once on initialization
+    requestUserInfo();
   }
 
   return {
