@@ -6,7 +6,7 @@ import Toolbar from 'primevue/toolbar';
 import { computed } from 'vue';
 import type { ZoneOptionItem } from '../../services/zoneView';
 import ThemeLogoButton from './ThemeLogoButton.vue';
-import UserProfileAvatar from './UserProfileAvatar.vue';
+import UserProfilePop from './UserProfilePop.vue';
 
 interface Props {
   isMobile: boolean;
@@ -124,7 +124,7 @@ function goToGithub() {
           </template>
         </Select>
 
-        <UserProfileAvatar />
+        <UserProfilePop />
         <Button
           class="github-button"
           icon="pi pi-github"
@@ -182,6 +182,10 @@ function goToGithub() {
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+}
+
+.toolbar-actions > * {
+  flex-shrink: 0;
 }
 
 .zone-select {

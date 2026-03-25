@@ -95,6 +95,7 @@ interface RegistrationData {
   gradePoint: string;
   hSchoolInfo: SchoolInfo;
   racingAge: number;
+  position: string;
 }
 
 interface RegistrationResponse {
@@ -184,7 +185,7 @@ const getUserInfo = async (): Promise<UserInfo | null> => {
       racingAge: registrationData.data.racingAge,
       school: registrationData.data.hSchoolInfo.name,
       grade: registrationData.data.gradePoint,
-      role: bbsData.data.role,
+      role: registrationData.data.position,
       badge: bbsData.data.badges || [],
     };
 

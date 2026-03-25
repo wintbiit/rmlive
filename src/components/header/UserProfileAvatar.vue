@@ -3,6 +3,21 @@ import Avatar from 'primevue/avatar';
 import { computed } from 'vue';
 import { useUserInfoStore } from '../../stores/userInfo';
 
+const emits = defineEmits<{
+  click: [event: Event];
+}>();
+
+defineProps({
+  shape: {
+    type: String,
+    default: 'circle',
+  },
+  size: {
+    type: String,
+    default: 'small',
+  },
+});
+
 const userInfoStore = useUserInfoStore();
 
 const avatarLabel = computed(() => {
@@ -12,12 +27,8 @@ const avatarLabel = computed(() => {
 
 const avatarTitle = computed(() => userInfoStore.userInfo?.nickname || '用户主页');
 
-function goToUserProfile() {
-  if (!userInfoStore.userInfo?.id) {
-    return;
-  }
-
-  window.open(`https://bbs.robomaster.com/user/${userInfoStore.userInfo.id}`, '_blank');
+function onClick(e: Event) {
+  emits('click', e);
 }
 </script>
 
@@ -29,9 +40,9 @@ function goToUserProfile() {
       :image="userInfoStore.userInfo.avatar"
       :aria-label="`访问 ${avatarTitle}`"
       :title="avatarTitle"
-      shape="circle"
-      size="small"
-      @click="goToUserProfile"
+      :shape="shape"
+      :size="size"
+      @click="onClick"
     />
     <Avatar
       v-else
@@ -39,9 +50,9 @@ function goToUserProfile() {
       :label="avatarLabel"
       :aria-label="`访问 ${avatarTitle}`"
       :title="avatarTitle"
-      shape="circle"
-      size="small"
-      @click="goToUserProfile"
+      :shape="shape"
+      :size="size"
+      @click="onClick"
     />
   </div>
 </template>

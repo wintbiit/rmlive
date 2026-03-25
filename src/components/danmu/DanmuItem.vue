@@ -62,7 +62,7 @@ const year = computed(() => `${tooltipMeta.value.year}年${tooltipMeta.value.rol
     </aside>
     <p class="content">{{ message.text }}</p>
 
-    <Popover ref="tooltipRef" :dismissable="false" class="danmu-tooltip-popover">
+    <Popover ref="tooltipRef" :dismissable="true" class="danmu-tooltip-popover">
       <div @mouseenter="clearHideTimer" @mouseleave="scheduleHide">
         <Card class="danmu-tooltip-card">
           <template #title>{{ tooltipMeta.nickname }}</template>
