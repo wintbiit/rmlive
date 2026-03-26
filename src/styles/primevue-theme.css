@@ -1,4 +1,5 @@
 /* PrimeVue Theme & App Global Variables */
+
 /* 集中所有颜色、主题相关 CSS 变量，避免 scoped :global() 污染 */
 
 :root {
@@ -46,4 +47,67 @@ body,
 #app {
   margin: 0;
   min-height: 100%;
+}
+
+/* SchedulePanel PrimeVue overrides */
+.schedule-panel-card .p-card-body {
+  padding: 0.5rem 0.6rem;
+}
+
+.schedule-panel-card .p-card-content {
+  padding: 0;
+}
+
+.schedule-tabs .p-tabs,
+.schedule-tabs .p-tabpanels,
+.schedule-tabs .p-tabpanel,
+.schedule-tabs .p-card-body,
+.schedule-tabs .p-card-content {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.schedule-tabs .p-tabpanel {
+  overflow-x: hidden;
+  padding: 0.35rem 0 0;
+}
+
+.schedule-tabs .p-tabpanels {
+  padding: 0;
+}
+
+.schedule-tabs .p-tablist-tab-list {
+  margin-bottom: 0.15rem;
+}
+
+.schedule-tabs .p-tablist-content {
+  overflow-x: auto;
+}
+
+@media (width <= 768px) {
+  .schedule-panel-card .p-card-body {
+    padding: 0.4rem 0.45rem;
+  }
+
+  .schedule-tabs .p-tabpanel {
+    padding-top: 0.25rem;
+  }
+}
+
+/* ScheduleItem PrimeVue overrides */
+.schedule-item .p-card-body {
+  padding: 0.45rem 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.schedule-item .p-card-content {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.schedule-item.compact .p-card-body {
+  padding: 0.36rem 0.4rem;
 }

@@ -126,10 +126,10 @@ function goToGithub() {
 
         <UserProfilePop />
         <Button
-          class="github-button"
           icon="pi pi-github"
           rounded
           text
+          size="small"
           severity="contrast"
           aria-label="访问 GitHub 仓库"
           @click="goToGithub"
@@ -152,8 +152,8 @@ function goToGithub() {
 }
 
 .brand-logo {
-  width: 40px;
-  height: 40px;
+  width: clamp(2.125rem, 3.8vw, 2.5rem);
+  height: clamp(2.125rem, 3.8vw, 2.5rem);
   flex-shrink: 0;
 }
 
@@ -228,22 +228,17 @@ function goToGithub() {
   line-height: 1.1;
 }
 
-.zone-name {
+.zone-name,
+.zone-date {
   white-space: nowrap;
 }
 
 .zone-date {
   font-size: 0.65rem;
   opacity: 0.74;
-  white-space: nowrap;
 }
 
-@media (max-width: 768px) {
-  .brand-logo {
-    width: 34px;
-    height: 34px;
-  }
-
+@media (width <= 768px) {
   .toolbar-brand-meta h1 {
     font-size: 0.92rem;
   }
@@ -260,21 +255,5 @@ function goToGithub() {
     min-width: 0;
     flex: 1;
   }
-
-  .zone-select-button-wrap {
-    min-width: 0;
-  }
-}
-
-.github-button {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--p-surface-500) 45%, transparent);
-  background: color-mix(in srgb, var(--p-surface-200) 78%, transparent);
-}
-
-.github-button :deep(.pi) {
-  font-size: 0.88rem;
 }
 </style>

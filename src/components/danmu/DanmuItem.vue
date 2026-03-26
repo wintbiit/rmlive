@@ -3,18 +3,16 @@ import Card from 'primevue/card';
 import Popover from 'primevue/popover';
 import Tag from 'primevue/tag';
 import { computed, onBeforeUnmount, ref } from 'vue';
-import { useDanmuStore } from '../../stores/danmu';
+import { resolveDisplayNickname, resolveDisplaySchool, resolveTooltipMeta } from '../../services/danmuView';
 import type { DanmuMessage } from '../../types/api';
 
 const props = defineProps<{
   message: DanmuMessage;
 }>();
 
-const danmuStore = useDanmuStore();
-
-const school = computed(() => danmuStore.resolveDisplaySchool(props.message));
-const nickname = computed(() => danmuStore.resolveDisplayNickname(props.message));
-const tooltipMeta = computed(() => danmuStore.resolveTooltipMeta(props.message));
+const school = computed(() => resolveDisplaySchool(props.message));
+const nickname = computed(() => resolveDisplayNickname(props.message));
+const tooltipMeta = computed(() => resolveTooltipMeta(props.message));
 const timeOnly = computed(() => new Date(props.message.timestamp).toLocaleTimeString('zh-CN', { hour12: false }));
 
 const tooltipRef = ref<any>(null);

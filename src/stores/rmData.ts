@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
+import { BOOTSTRAP_PER_REQUEST_TIMEOUT_MS, BOOTSTRAP_TOTAL_TIMEOUT_MS } from '../constants/runtime';
 import { createBootstrapTimeoutRunner } from '../services/bootstrapTimeout';
 import { buildTeamGroupMap, extractGroupSections } from '../services/groupView';
 import { logWarn, toErrorSummary } from '../services/observability';
@@ -20,6 +21,7 @@ import {
 } from '../services/rmBootstrap';
 import { extractInferredLiveZoneIdSet, extractScheduleZoneIdSet } from '../services/rmPayloadView';
 import { resolveDefaultQualityRes, resolveEffectiveStreamErrorMessage } from '../services/rmStreamView';
+import { getNowEpochSeconds } from '../services/timeNow';
 import { pickBestZoneCandidate, shouldAutoPromoteZone } from '../services/zoneSelection';
 import {
   normalizeZoneId,
@@ -71,7 +73,7 @@ export const useRmDataStore = defineStore('rm-data', () => {
   const scheduleZoneIdSet = computed(() => extractScheduleZoneIdSet(schedule.value));
 
   const zoneOptions = computed<ZoneOptionItem[]>(() => {
-    const nowEpoch = Math.floor(Date.now() / 1000);
+    const nowEpoch = getNowEpochSeconds();
 
     return liveZones.value.map((item) => toZoneOptionItem(item, nowEpoch));
   });
@@ -84,7 +86,7 @@ export const useRmDataStore = defineStore('rm-data', () => {
     if (!zone) {
       return null;
     }
-    return resolveZoneUiState(zone, Math.floor(Date.now() / 1000));
+    return resolveZoneUiState(zone, getNowEpochSeconds());
   });
   const canPlaySelectedZone = computed(() => {
     const zone = selectedZone.value;
@@ -202,11 +204,9 @@ export const useRmDataStore = defineStore('rm-data', () => {
 
     void (async () => {
       const startTime = Date.now();
-      const TOTAL_BOOTSTRAP_TIMEOUT_MS = 15000; // 整个bootstrap最多15秒
-      const PER_REQUEST_TIMEOUT_MS = 8000; // 每个单独请求最多8秒
       const withBootstrapTimeout = createBootstrapTimeoutRunner(startTime, {
-        totalTimeoutMs: TOTAL_BOOTSTRAP_TIMEOUT_MS,
-        perRequestTimeoutMs: PER_REQUEST_TIMEOUT_MS,
+        totalTimeoutMs: BOOTSTRAP_TOTAL_TIMEOUT_MS,
+        perRequestTimeoutMs: BOOTSTRAP_PER_REQUEST_TIMEOUT_MS,
       });
 
       const {

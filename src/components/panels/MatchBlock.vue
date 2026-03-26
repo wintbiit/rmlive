@@ -68,7 +68,7 @@ function showSlug(slug: string): boolean {
           />
         </div>
 
-        <div class="team-cell team-cell-blue">
+        <div class="team-cell">
           <TeamInfoCard
             :compact="compact"
             :team-name="match.blueTeam.teamName"
@@ -120,10 +120,6 @@ function showSlug(slug: string): boolean {
   font-size: 1.05rem;
 }
 
-.block p {
-  margin: 0.45rem 0 0;
-}
-
 .block-head {
   display: flex;
   gap: 0.6rem;
@@ -150,12 +146,6 @@ function showSlug(slug: string): boolean {
 .team-cell-red :deep(.head-row) {
   text-align: right;
   justify-content: flex-end;
-}
-
-.team-cell-blue :deep(.meta),
-.team-cell-blue :deep(.head-row) {
-  text-align: left;
-  justify-content: flex-start;
 }
 
 .match-body {
@@ -197,6 +187,7 @@ function showSlug(slug: string): boolean {
   border-radius: 0.65rem;
   padding: 0.5rem 0.45rem;
   background: var(--score-side-bg-light);
+  border: 1px solid var(--score-side-border, transparent);
 }
 
 .score-side small {
@@ -212,11 +203,11 @@ function showSlug(slug: string): boolean {
 }
 
 .score-side-red {
-  border: 1px solid var(--score-side-red-border);
+  --score-side-border: var(--score-side-red-border);
 }
 
 .score-side-blue {
-  border: 1px solid var(--score-side-blue-border);
+  --score-side-border: var(--score-side-blue-border);
 }
 
 .score-sub-tag {
@@ -238,7 +229,7 @@ function showSlug(slug: string): boolean {
   margin-top: 0.4rem;
 }
 
-@media (max-width: 760px) {
+@media (width <= 760px) {
   .block-head {
     align-items: flex-start;
     flex-direction: column;

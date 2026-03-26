@@ -119,6 +119,7 @@ function openReplay() {
             :team-name="item.redTeam.teamName"
             :college-name="item.redTeam.collegeName"
             :logo="item.redTeam.logo"
+            :logo-size="props.compact ? '1.125rem' : ''"
             :group-label="toGroupLabel(item.redTeam.teamName)"
             :show-group-label="!props.compact"
             :show-college-name="!props.compact"
@@ -156,6 +157,7 @@ function openReplay() {
             :team-name="item.blueTeam.teamName"
             :college-name="item.blueTeam.collegeName"
             :logo="item.blueTeam.logo"
+            :logo-size="props.compact ? '1.125rem' : ''"
             :group-label="toGroupLabel(item.blueTeam.teamName)"
             :show-group-label="!props.compact"
             :show-college-name="!props.compact"
@@ -186,18 +188,6 @@ function openReplay() {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-}
-
-.schedule-item :deep(.p-card-body) {
-  padding: 0.45rem 0.5rem;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.schedule-item :deep(.p-card-content) {
-  min-width: 0;
-  max-width: 100%;
 }
 
 .item-header {
@@ -268,13 +258,13 @@ function openReplay() {
 }
 
 .center-column {
-  flex: 0 0 3.6rem;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.3rem;
-  min-width: 0;
+  min-width: 2.8rem;
 }
 
 .status-row {
@@ -337,10 +327,6 @@ function openReplay() {
   color: var(--text-color-secondary);
 }
 
-.schedule-item.compact :deep(.p-card-body) {
-  padding: 0.36rem 0.4rem;
-}
-
 @keyframes live-breathe {
   0%,
   100% {
@@ -385,11 +371,6 @@ function openReplay() {
     padding: 0.1rem 0.15rem;
   }
 
-  .team-column :deep(.team-logo-wrapper) {
-    width: 18px !important;
-    height: 18px !important;
-  }
-
   .team-column :deep(h4) {
     font-size: 0.7rem;
   }
@@ -399,7 +380,8 @@ function openReplay() {
   }
 
   .center-column {
-    flex: 0 0 2.6rem;
+    flex: 0 1 auto;
+    min-width: 2.2rem;
     gap: 0.15rem;
   }
 

@@ -82,9 +82,11 @@ function applyFilters(source: typeof rows.value): typeof rows.value {
   return filtered;
 }
 
+const filteredRows = computed(() => applyFilters(rows.value));
+
 // Compute schedule rows (upcoming)
 const scheduleRows = computed(() => {
-  const filtered = applyFilters(rows.value.filter((item) => !isResultStatus(item.statusRaw)));
+  const filtered = filteredRows.value.filter((item) => !isResultStatus(item.statusRaw));
 
   // Sort by start time ascending
   return filtered.slice().sort((a, b) => a.startedAtTs - b.startedAtTs);
@@ -92,7 +94,7 @@ const scheduleRows = computed(() => {
 
 // Compute result rows (completed)
 const resultRows = computed(() => {
-  const filtered = applyFilters(rows.value.filter((item) => isResultStatus(item.statusRaw)));
+  const filtered = filteredRows.value.filter((item) => isResultStatus(item.statusRaw));
 
   // Sort by start time descending (newest first)
   return filtered.slice().sort((a, b) => b.startedAtTs - a.startedAtTs);
@@ -233,41 +235,6 @@ function onTeamSelect(payload: TeamSelectPayload) {
   max-width: 100%;
 }
 
-.schedule-panel-card :deep(.p-card-body) {
-  padding: 0.5rem 0.6rem;
-}
-
-.schedule-panel-card :deep(.p-card-content) {
-  padding: 0;
-}
-
-.schedule-tabs :deep(.p-tabs),
-.schedule-tabs :deep(.p-tabpanels),
-.schedule-tabs :deep(.p-tabpanel),
-.schedule-tabs :deep(.p-card-body),
-.schedule-tabs :deep(.p-card-content) {
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.schedule-tabs :deep(.p-tabpanel) {
-  overflow-x: hidden;
-  padding: 0.35rem 0 0;
-}
-
-.schedule-tabs :deep(.p-tabpanels) {
-  padding: 0;
-}
-
-.schedule-tabs :deep(.p-tablist-tab-list) {
-  margin-bottom: 0.15rem;
-}
-
-.schedule-tabs :deep(.p-tablist-content) {
-  overflow-x: auto;
-}
-
 .tab-label {
   display: inline-flex;
   align-items: center;
@@ -280,14 +247,6 @@ function onTeamSelect(payload: TeamSelectPayload) {
 }
 
 @media (max-width: 768px) {
-  .schedule-panel-card :deep(.p-card-body) {
-    padding: 0.4rem 0.45rem;
-  }
-
-  .schedule-tabs :deep(.p-tabpanel) {
-    padding-top: 0.25rem;
-  }
-
   .tab-label {
     font-size: 0.85rem;
   }

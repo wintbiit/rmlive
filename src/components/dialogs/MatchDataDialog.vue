@@ -32,40 +32,38 @@ const emit = defineEmits<{
   'team-select': [teamName: string];
 }>();
 
-const dialogTeamGroupSection = computed(() => findDialogTeamGroupSection(props.groupSections, props.selectedTeam));
+const dialogRankContext = computed(() => {
+  const teamGroupSection = findDialogTeamGroupSection(props.groupSections, props.selectedTeam);
+  const teamRows = buildDialogTeamRows(teamGroupSection, props.selectedTeam);
 
-const dialogTeamRows = computed(() => buildDialogTeamRows(dialogTeamGroupSection.value, props.selectedTeam));
-
-const dialogRankSection = computed(() => {
   const byGroup = resolveGroupRankSectionByGroup(
     props.groupRankInfo,
     props.selectedZoneId,
     props.selectedZoneName,
-    dialogTeamGroupSection.value?.group ?? null,
+    teamGroupSection?.group ?? null,
   );
 
-  if (byGroup) {
-    return byGroup;
-  }
+  const rankSection =
+    byGroup ||
+    resolveGroupRankSectionByTeam(
+      props.groupRankInfo,
+      props.selectedZoneId,
+      props.selectedZoneName,
+      props.selectedTeam,
+    );
 
-  return resolveGroupRankSectionByTeam(
-    props.groupRankInfo,
-    props.selectedZoneId,
-    props.selectedZoneName,
-    props.selectedTeam,
-  );
+  const rankRows = sortDialogRankRows(buildDialogRankRows(rankSection, teamRows, props.selectedTeam));
+
+  return {
+    hasGroupRankSection: Boolean(rankSection || teamGroupSection),
+    rankSectionTitle: rankSection?.groupName ?? teamGroupSection?.group ?? '当前组',
+    compactRankRows: rankRows.slice(0, 8),
+  };
 });
 
-const dialogRankRows = computed(() =>
-  buildDialogRankRows(dialogRankSection.value, dialogTeamRows.value, props.selectedTeam),
-);
-const sortedDialogRankRows = computed(() => sortDialogRankRows(dialogRankRows.value));
-
-const hasGroupRankSection = computed(() => Boolean(dialogRankSection.value || dialogTeamGroupSection.value));
-const rankSectionTitle = computed(
-  () => dialogRankSection.value?.groupName ?? dialogTeamGroupSection.value?.group ?? '当前组',
-);
-const compactRankRows = computed(() => sortedDialogRankRows.value.slice(0, 8));
+const hasGroupRankSection = computed(() => dialogRankContext.value.hasGroupRankSection);
+const rankSectionTitle = computed(() => dialogRankContext.value.rankSectionTitle);
+const compactRankRows = computed(() => dialogRankContext.value.compactRankRows);
 const selectedRankTeam = ref<string | null>(null);
 const rankListOptions = computed(() =>
   compactRankRows.value.map((row) => ({
@@ -120,7 +118,7 @@ function onOpenTeamData(teamName: string) {
         option-label="label"
         option-value="value"
         class="rank-listbox"
-        list-style="max-height: 20rem"
+        list-style="max-height: 30rem"
       >
         <template #option="slotProps">
           <div class="rank-option">

@@ -6,6 +6,7 @@ interface Props {
   teamName: string;
   collegeName?: string;
   logo?: string;
+  logoSize?: string;
   groupLabel?: string;
   showGroupLabel?: boolean;
   showCollegeName?: boolean;
@@ -17,6 +18,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   collegeName: '-',
   logo: '',
+  logoSize: '',
   groupLabel: '',
   showGroupLabel: true,
   showCollegeName: true,
@@ -40,7 +42,7 @@ function onClick() {
 <template>
   <article class="team-info" :class="{ compact, clickable, 'logo-right': logoPosition === 'right' }" @click="onClick">
     <div class="team-info-inner">
-      <TeamLogo :logo="logo" :team-name="teamName" />
+      <TeamLogo :logo="logo" :team-name="teamName" :custom-size="logoSize || (compact ? '1.75rem' : '')" />
       <div class="meta">
         <div class="head-row">
           <h4>{{ teamName }}</h4>
@@ -130,11 +132,6 @@ function onClick() {
 
 .group-tag :deep(.p-tag-label) {
   font-size: 0.68rem;
-}
-
-.team-info.compact :deep(.team-logo-wrapper) {
-  width: 28px !important;
-  height: 28px !important;
 }
 
 .team-info.compact {

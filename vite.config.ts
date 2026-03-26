@@ -102,6 +102,10 @@ export default defineConfig(({ mode }) => {
             }
 
             if (id.includes('primevue/')) {
+              const match = id.match(/primevue\/([^/]+)/);
+              if (match?.[1]) {
+                return `ui-${match[1]}`;
+              }
               return 'ui-components';
             }
 
