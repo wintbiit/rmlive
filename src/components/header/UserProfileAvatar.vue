@@ -21,6 +21,9 @@ defineProps({
 const userInfoStore = useUserInfoStore();
 
 const avatarLabel = computed(() => {
+  if (userInfoStore.userInfo?.avatar) {
+    return undefined;
+  }
   const nickname = userInfoStore.userInfo?.nickname ?? '';
   return nickname.charAt(0).toUpperCase();
 });
@@ -33,28 +36,17 @@ function onClick(e: Event) {
 </script>
 
 <template>
-  <div v-if="userInfoStore.userInfo">
-    <Avatar
-      v-if="userInfoStore.userInfo.avatar"
-      class="user-avatar"
-      :image="userInfoStore.userInfo.avatar"
-      :aria-label="`访问 ${avatarTitle}`"
-      :title="avatarTitle"
-      :shape="shape"
-      :size="size"
-      @click="onClick"
-    />
-    <Avatar
-      v-else
-      class="user-avatar"
-      :label="avatarLabel"
-      :aria-label="`访问 ${avatarTitle}`"
-      :title="avatarTitle"
-      :shape="shape"
-      :size="size"
-      @click="onClick"
-    />
-  </div>
+  <Avatar
+    v-if="userInfoStore.userInfo"
+    class="user-avatar"
+    :aria-label="`访问 ${avatarTitle}`"
+    :image="userInfoStore.userInfo.avatar"
+    :title="avatarTitle"
+    :label="avatarLabel"
+    :shape="shape"
+    :size="size"
+    @click="onClick"
+  />
 </template>
 
 <style scoped>

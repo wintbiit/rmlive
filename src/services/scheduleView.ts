@@ -414,6 +414,41 @@ export function getTeamNameOptions(rows: ScheduleRowItem[]): ScheduleTeamOption[
   ).map((name) => ({ label: name, value: name }));
 }
 
+export function getSchoolTeamOptions(rows: ScheduleRowItem[]): ScheduleTeamOption[] {
+  const teamSchoolMap = new Map<string, string>();
+
+  for (const item of rows) {
+    const pairs = [
+      {
+        teamName: normalizeTeamName(item.redTeam.teamName),
+        schoolName: normalizeSchoolName(item.redTeam.collegeName),
+      },
+      {
+        teamName: normalizeTeamName(item.blueTeam.teamName),
+        schoolName: normalizeSchoolName(item.blueTeam.collegeName),
+      },
+    ];
+
+    for (const pair of pairs) {
+      if (!pair.teamName) {
+        continue;
+      }
+
+      const existingSchool = teamSchoolMap.get(pair.teamName) ?? '';
+      if (!existingSchool || pair.schoolName) {
+        teamSchoolMap.set(pair.teamName, pair.schoolName);
+      }
+    }
+  }
+
+  return Array.from(teamSchoolMap.entries())
+    .map(([teamName, schoolName]) => ({
+      label: schoolName ? `${schoolName} - ${teamName}` : teamName,
+      value: teamName,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
+}
+
 export function getRecentMatches(rows: ScheduleRowItem[], zoneId: string | null, limit = 5): ScheduleRowItem[] {
   const zoneRows = filterScheduleRowsByZone(rows, zoneId);
 

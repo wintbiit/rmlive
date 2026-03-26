@@ -9,8 +9,7 @@ import { computed, ref, watch } from 'vue';
 import {
   getRecentMatches,
   getScheduleRows,
-  getScheduleSchoolOptions,
-  getTeamNameOptions,
+  getSchoolTeamOptions,
   getZoneNameOptions,
   isResultStatus,
 } from '../../services/scheduleView';
@@ -47,13 +46,11 @@ const rows = computed(() => getScheduleRows(props.payload, props.liveGameInfo));
 const activeTab = ref<'recent' | 'schedule' | 'result'>('recent');
 
 // Filter states for schedule and result tabs
-const selectedSchool = ref<string[]>([]);
 const selectedTeam = ref<string[]>([]);
 const selectedZone = ref<string[]>([]);
 
 // Generate filter options
-const schoolOptions = computed(() => getScheduleSchoolOptions(rows.value));
-const teamOptions = computed(() => getTeamNameOptions(rows.value));
+const teamOptions = computed(() => getSchoolTeamOptions(rows.value));
 const zoneOptions = computed(() => getZoneNameOptions(rows.value));
 
 // Compute recent matches
@@ -61,13 +58,6 @@ const recentMatches = computed(() => getRecentMatches(rows.value, props.selected
 
 function applyFilters(source: typeof rows.value): typeof rows.value {
   let filtered = source;
-
-  if (selectedSchool.value.length > 0) {
-    const schoolSet = new Set(selectedSchool.value);
-    filtered = filtered.filter(
-      (item) => schoolSet.has(item.redTeam.collegeName) || schoolSet.has(item.blueTeam.collegeName),
-    );
-  }
 
   if (selectedTeam.value.length > 0) {
     const teamSet = new Set(selectedTeam.value);
@@ -98,12 +88,6 @@ const resultRows = computed(() => {
 
   // Sort by start time descending (newest first)
   return filtered.slice().sort((a, b) => b.startedAtTs - a.startedAtTs);
-});
-
-// Watch school options and reset selection if it becomes invalid
-watch(schoolOptions, (options) => {
-  const validValues = new Set(options.map((option) => option.value));
-  selectedSchool.value = selectedSchool.value.filter((value) => validValues.has(value));
 });
 
 // Watch team options and reset selection if it becomes invalid
@@ -160,6 +144,15 @@ function onTeamSelect(payload: TeamSelectPayload) {
           </Tab>
         </TabList>
 
+        <ScheduleListFilter
+          v-if="activeTab === 'schedule' || activeTab === 'result'"
+          :isMobile="isMobile"
+          :teamOptions="teamOptions"
+          :zoneOptions="zoneOptions"
+          v-model:selectedTeam="selectedTeam"
+          v-model:selectedZone="selectedZone"
+        />
+
         <TabPanels>
           <!-- Recent matches tab -->
           <TabPanel value="recent">
@@ -173,16 +166,6 @@ function onTeamSelect(payload: TeamSelectPayload) {
 
           <!-- Schedule (upcoming) tab with filters -->
           <TabPanel value="schedule">
-            <ScheduleListFilter
-              :isMobile="isMobile"
-              :schoolOptions="schoolOptions"
-              :teamOptions="teamOptions"
-              :zoneOptions="zoneOptions"
-              v-model:selectedSchool="selectedSchool"
-              v-model:selectedTeam="selectedTeam"
-              v-model:selectedZone="selectedZone"
-            />
-
             <ScheduleList
               :rows="scheduleRows"
               :team-group-map="props.teamGroupMap"
@@ -194,16 +177,6 @@ function onTeamSelect(payload: TeamSelectPayload) {
 
           <!-- Result (completed) tab with filters -->
           <TabPanel value="result">
-            <ScheduleListFilter
-              :isMobile="isMobile"
-              :schoolOptions="schoolOptions"
-              :teamOptions="teamOptions"
-              :zoneOptions="zoneOptions"
-              v-model:selectedSchool="selectedSchool"
-              v-model:selectedTeam="selectedTeam"
-              v-model:selectedZone="selectedZone"
-            />
-
             <ScheduleList
               :rows="resultRows"
               :team-group-map="props.teamGroupMap"

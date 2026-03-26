@@ -1,17 +1,6 @@
 <template>
   <div class="filters-row" :class="{ mobile: isMobile }">
     <MultiSelect
-      v-model="selectedSchool"
-      placeholder="筛选学校"
-      :options="schoolOptions"
-      option-label="label"
-      option-value="value"
-      filter
-      display="chip"
-      size="small"
-      :max-selected-labels="isMobile ? 2 : 4"
-    />
-    <MultiSelect
       v-model="selectedTeam"
       placeholder="筛选队伍"
       :options="teamOptions"
@@ -39,16 +28,13 @@
 import { MultiSelect } from 'primevue';
 
 // const models = defineModel<{
-//   selectedSchool: string[];
 //   selectedTeam: string[];
 //   selectedZone: string[];
 // }>();
-const selectedSchool = defineModel<string[]>('selectedSchool', { default: () => [] });
 const selectedTeam = defineModel<string[]>('selectedTeam', { default: () => [] });
 const selectedZone = defineModel<string[]>('selectedZone', { default: () => [] });
 defineProps<{
   isMobile: boolean;
-  schoolOptions: { label: string; value: string }[];
   teamOptions: { label: string; value: string }[];
   zoneOptions: { label: string; value: string }[];
 }>();

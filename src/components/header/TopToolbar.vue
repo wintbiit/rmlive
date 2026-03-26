@@ -70,7 +70,6 @@ function goToGithub() {
         optionLabel="label"
         optionValue="value"
         optionDisabled="disabled"
-        fluid
         size="small"
         @update:model-value="onZoneChange"
       >

@@ -3,6 +3,7 @@ import type { ScheduleRowItem } from '../scheduleView';
 import {
   getRecentMatches,
   getScheduleSchoolOptions,
+  getSchoolTeamOptions,
   getTeamNameOptions,
   getZoneNameOptions,
   groupScheduleRowsByDate,
@@ -62,6 +63,12 @@ describe('scheduleView', () => {
       { label: 'alpha', value: 'alpha' },
       { label: 'Alpha', value: 'Alpha' },
       { label: 'Beta', value: 'Beta' },
+    ]);
+
+    expect(getSchoolTeamOptions(rows)).toEqual([
+      { label: 'HIT - Beta', value: 'Beta' },
+      { label: 'SCUT - alpha', value: 'alpha' },
+      { label: 'SCUT - Alpha', value: 'Alpha' },
     ]);
   });
 
