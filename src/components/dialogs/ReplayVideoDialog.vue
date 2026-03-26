@@ -167,12 +167,12 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-:deep(.art-video-player),
-:deep(.art-video-player video),
-:deep(.art-video-player .art-mask),
-:deep(.art-video-player .art-player-app) {
-  width: 100% !important;
-  height: 100% !important;
+.replay-player :deep(.art-video-player),
+.replay-player :deep(.art-video-player video),
+.replay-player :deep(.art-video-player .art-mask),
+.replay-player :deep(.art-video-player .art-player-app) {
+  width: 100%;
+  height: 100%;
 }
 
 :deep(.p-dialog) {
@@ -183,7 +183,7 @@ onBeforeUnmount(() => {
   overflow-x: hidden;
 }
 
-@media (max-width: 768px) {
+@media (width <= 768px) {
   .replay-player {
     min-height: 180px;
   }

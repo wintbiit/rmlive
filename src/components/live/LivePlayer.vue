@@ -512,12 +512,12 @@ onBeforeUnmount(async () => {
   margin-top: 0.35rem;
 }
 
-:deep(.art-video-player),
-:deep(.art-video-player video),
-:deep(.art-video-player .art-mask),
-:deep(.art-video-player .art-player-app) {
-  width: 100% !important;
-  max-width: 100% !important;
+.player-container :deep(.art-video-player),
+.player-container :deep(.art-video-player video),
+.player-container :deep(.art-video-player .art-mask),
+.player-container :deep(.art-video-player .art-player-app) {
+  width: 100%;
+  max-width: 100%;
 }
 
 :deep(.p-message) {
@@ -546,7 +546,7 @@ onBeforeUnmount(async () => {
   background: rgba(0, 0, 0, 0.58);
 }
 
-@media (max-width: 768px) {
+@media (width <= 768px) {
   .player-shell {
     min-height: 190px;
   }

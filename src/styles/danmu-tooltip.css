@@ -3,3 +3,27 @@
 .danmu-tooltip-popover .p-popover-content {
   padding: 0.4rem;
 }
+
+.danmu-tooltip-card {
+  width: min(16.5rem, calc(100vw - 2.2rem));
+}
+
+.danmu-tooltip-card .p-card-title {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.danmu-tooltip-card .p-card-body {
+  gap: 0.35rem;
+  padding: 0.5rem 0.58rem;
+}
+
+.danmu-tooltip-card .p-card-content {
+  padding-top: 0;
+}
+
+.danmu-tooltip-card .p-tag {
+  font-size: 0.62rem;
+  padding: 0.1rem 0.3rem;
+}

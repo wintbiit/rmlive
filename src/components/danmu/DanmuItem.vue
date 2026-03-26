@@ -129,30 +129,6 @@ const year = computed(() => `${tooltipMeta.value.year}年${tooltipMeta.value.rol
   overflow-wrap: anywhere;
 }
 
-.danmu-tooltip-card {
-  width: min(16.5rem, calc(100vw - 2.2rem));
-}
-
-.danmu-tooltip-card :deep(.p-card-title) {
-  margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.2;
-}
-
-.danmu-tooltip-card :deep(.p-card-body) {
-  gap: 0.35rem;
-  padding: 0.5rem 0.58rem;
-}
-
-.danmu-tooltip-card :deep(.p-card-content) {
-  padding-top: 0;
-}
-
-.danmu-tooltip-card :deep(.p-tag) {
-  font-size: 0.62rem;
-  padding: 0.1rem 0.3rem;
-}
-
 .danmu-tooltip-message,
 .danmu-tooltip-raw,
 .danmu-tooltip-time {

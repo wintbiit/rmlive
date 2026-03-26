@@ -185,8 +185,6 @@ function openReplay() {
   border-radius: 10px;
   background: var(--surface-card);
   overflow: hidden;
-  width: 100%;
-  max-width: 100%;
   box-sizing: border-box;
 }
 
@@ -222,15 +220,6 @@ function openReplay() {
   flex: 1 1 0;
   min-width: 0;
   white-space: nowrap;
-}
-
-.header-meta :deep(.p-tag) {
-  max-width: 9rem;
-}
-
-.header-meta :deep(.p-tag-label) {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .time-text {
@@ -352,19 +341,9 @@ function openReplay() {
     margin-left: auto;
   }
 
-  .header-meta :deep(.p-tag) {
-    max-width: 4.2rem;
-  }
-
-  .header-meta :deep(.p-tag-label) {
-    font-size: 0.6rem;
-  }
-
   .item-content {
     gap: 0.18rem;
     min-width: 0;
-    width: 100%;
-    max-width: 100%;
   }
 
   .team-column :deep(.team-info) {

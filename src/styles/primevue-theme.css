@@ -108,6 +108,25 @@ body,
   max-width: 100%;
 }
 
+.schedule-item .header-meta .p-tag {
+  max-width: 9rem;
+}
+
+.schedule-item .header-meta .p-tag-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .schedule-item.compact .p-card-body {
   padding: 0.36rem 0.4rem;
+}
+
+@media (width <= 768px) {
+  .schedule-item .header-meta .p-tag {
+    max-width: 4.2rem;
+  }
+
+  .schedule-item .header-meta .p-tag-label {
+    font-size: 0.6rem;
+  }
 }

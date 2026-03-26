@@ -104,7 +104,68 @@ export default defineConfig(({ mode }) => {
             if (id.includes('primevue/')) {
               const match = id.match(/primevue\/([^/]+)/);
               if (match?.[1]) {
-                return `ui-${match[1]}`;
+                const component = match[1];
+
+                if (
+                  [
+                    'dialog',
+                    'popover',
+                    'tooltip',
+                    'message',
+                    'toast',
+                    'toastservice',
+                    'confirmpopup',
+                    'confirmdialog',
+                  ].includes(component)
+                ) {
+                  return 'ui-overlay';
+                }
+
+                if (
+                  [
+                    'select',
+                    'multiselect',
+                    'selectbutton',
+                    'listbox',
+                    'checkbox',
+                    'radiobutton',
+                    'inputtext',
+                    'inputnumber',
+                    'togglebutton',
+                    'toggleswitch',
+                    'iconfield',
+                    'inputicon',
+                  ].includes(component)
+                ) {
+                  return 'ui-form';
+                }
+
+                if (
+                  [
+                    'card',
+                    'panel',
+                    'toolbar',
+                    'tabs',
+                    'tab',
+                    'tablist',
+                    'tabpanels',
+                    'tabpanel',
+                    'fieldset',
+                    'divider',
+                    'splitter',
+                    'splitterpanel',
+                    'skeleton',
+                    'scrolltop',
+                  ].includes(component)
+                ) {
+                  return 'ui-layout';
+                }
+
+                if (['button', 'tag', 'badge', 'avatar', 'chip', 'progressspinner'].includes(component)) {
+                  return 'ui-display';
+                }
+
+                return 'ui-core';
               }
               return 'ui-components';
             }

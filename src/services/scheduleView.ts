@@ -76,25 +76,32 @@ function normalizeSchoolName(value: string): string {
   return name;
 }
 
+function toSortedUniqueValues(values: Set<string>): string[] {
+  return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
+function collectUniqueNames(rows: ScheduleRowItem[], resolvers: Array<(item: ScheduleRowItem) => string>): Set<string> {
+  const values = new Set<string>();
+
+  for (const item of rows) {
+    for (const resolveName of resolvers) {
+      const value = resolveName(item);
+      if (value) {
+        values.add(value);
+      }
+    }
+  }
+
+  return values;
+}
+
 export function getScheduleSchoolOptions(rows: ScheduleRowItem[]): ScheduleSchoolOption[] {
-  const names = new Set<string>();
-
-  rows.forEach((item) => {
-    const redSchool = normalizeSchoolName(item.redTeam.collegeName);
-    const blueSchool = normalizeSchoolName(item.blueTeam.collegeName);
-
-    if (redSchool) {
-      names.add(redSchool);
-    }
-
-    if (blueSchool) {
-      names.add(blueSchool);
-    }
-  });
-
-  return Array.from(names)
-    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    .map((name) => ({ label: name, value: name }));
+  return toSortedUniqueValues(
+    collectUniqueNames(rows, [
+      (item) => normalizeSchoolName(item.redTeam.collegeName),
+      (item) => normalizeSchoolName(item.blueTeam.collegeName),
+    ]),
+  ).map((name) => ({ label: name, value: name }));
 }
 
 export function filterScheduleRowsBySchool(rows: ScheduleRowItem[], schoolName: string | null): ScheduleRowItem[] {
@@ -399,43 +406,44 @@ export function getZoneNameOptions(rows: ScheduleRowItem[]): ScheduleZoneOption[
 }
 
 export function getTeamNameOptions(rows: ScheduleRowItem[]): ScheduleTeamOption[] {
-  const teams = new Set<string>();
-
-  rows.forEach((item) => {
-    const redTeam = normalizeTeamName(item.redTeam.teamName);
-    const blueTeam = normalizeTeamName(item.blueTeam.teamName);
-
-    if (redTeam) {
-      teams.add(redTeam);
-    }
-
-    if (blueTeam) {
-      teams.add(blueTeam);
-    }
-  });
-
-  return Array.from(teams)
-    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    .map((name) => ({ label: name, value: name }));
+  return toSortedUniqueValues(
+    collectUniqueNames(rows, [
+      (item) => normalizeTeamName(item.redTeam.teamName),
+      (item) => normalizeTeamName(item.blueTeam.teamName),
+    ]),
+  ).map((name) => ({ label: name, value: name }));
 }
 
 export function getRecentMatches(rows: ScheduleRowItem[], zoneId: string | null, limit = 5): ScheduleRowItem[] {
   const zoneRows = filterScheduleRowsByZone(rows, zoneId);
 
-  const completed = zoneRows
-    .filter((item) => isResultStatus(item.statusRaw))
-    .slice()
-    .sort((a, b) => b.startedAtTs - a.startedAtTs);
+  const completed: ScheduleRowItem[] = [];
+  const upcoming: ScheduleRowItem[] = [];
 
-  const upcoming = zoneRows
-    .filter((item) => !isResultStatus(item.statusRaw))
-    .slice()
-    .sort((a, b) => a.startedAtTs - b.startedAtTs);
+  for (const item of zoneRows) {
+    if (isResultStatus(item.statusRaw)) {
+      completed.push(item);
+    } else {
+      upcoming.push(item);
+    }
+  }
+
+  completed.sort((a, b) => b.startedAtTs - a.startedAtTs);
+  upcoming.sort((a, b) => a.startedAtTs - b.startedAtTs);
 
   const completedCount = Math.min(2, completed.length);
   const upcomingCount = Math.min(limit - completedCount, upcoming.length);
 
   return [...completed.slice(0, completedCount), ...upcoming.slice(0, upcomingCount)];
+}
+
+function toDateKeyTimestamp(dateKey: string): number {
+  if (dateKey === 'unknown') {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const ts = new Date(dateKey).getTime();
+  return Number.isNaN(ts) ? Number.POSITIVE_INFINITY : ts;
 }
 
 export function groupScheduleRowsByDate(rows: ScheduleRowItem[], order: 'asc' | 'desc' = 'asc'): ScheduleDateGroup[] {
@@ -451,13 +459,7 @@ export function groupScheduleRowsByDate(rows: ScheduleRowItem[], order: 'asc' | 
 
   return Array.from(groups.entries())
     .sort((a, b) => {
-      if (a[0] === 'unknown') {
-        return 1;
-      }
-      if (b[0] === 'unknown') {
-        return -1;
-      }
-      const diff = new Date(a[0]).getTime() - new Date(b[0]).getTime();
+      const diff = toDateKeyTimestamp(a[0]) - toDateKeyTimestamp(b[0]);
       return order === 'desc' ? -diff : diff;
     })
     .map(([date, items]) => {
