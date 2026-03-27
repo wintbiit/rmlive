@@ -59,14 +59,16 @@ const runningMatch = computed(() => {
   <div>
     <Card v-if="!uiStore.isMobile">
       <template #content>
-        <MatchBlock
+        <!-- <MatchBlock
           title="当前对局"
           :match="current"
           :hero="true"
           :team-group-map="props.teamGroupMap"
           start-prefix="开始"
           @team-select="onSelectTeam"
-        />
+        /> -->
+
+        <ScheduleItem v-if="runningMatch" :item="runningMatch"> </ScheduleItem>
 
         <Panel
           toggleable

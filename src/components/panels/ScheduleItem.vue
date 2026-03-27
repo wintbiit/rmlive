@@ -4,7 +4,7 @@ import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Tag from 'primevue/tag';
 import { computed, ref } from 'vue';
-import { isResultStatus, type ScheduleRowItem } from '../../services/scheduleView';
+import { type ScheduleRowItem } from '../../services/scheduleView';
 import TeamInfoCard from '../common/TeamInfoCard.vue';
 import ReplayVideoDialog from '../dialogs/ReplayVideoDialog.vue';
 
@@ -87,6 +87,12 @@ function openReplay() {
   }
   replayVisible.value = true;
 }
+
+const showScore = computed(() => {
+  return ['DONE', 'FINISHED', 'ENDED', 'STARTED'].includes(upperStatus.value);
+});
+
+const isLiving = computed(() => ['STARTED', 'PLAYING'].includes(upperStatus.value));
 </script>
 
 <template>
@@ -96,7 +102,14 @@ function openReplay() {
         <header class="item-header">
           <span class="event-title">{{ item.eventTitle || '赛事' }}</span>
           <div class="header-center">
-            <span class="time-text">{{ matchTime }}</span>
+            <div v-if="isLiving" class="live-wrap">
+              <div class="live-pill">
+                <i class="pi pi-circle-fill" />
+                <span>LIVE</span>
+              </div>
+              <span class="round-text">{{ liveRoundText }}</span>
+            </div>
+            <span v-else class="time-text">{{ matchTime }}</span>
             <Button
               v-if="canShowReplay"
               icon="pi pi-play-circle"
@@ -134,14 +147,7 @@ function openReplay() {
             <Tag :value="getBOLabel(item.planGameCount)" severity="info" />
             <div class="status-row">
               <div v-if="upperStatus === 'WAITING'" class="waiting-space" />
-              <div v-else-if="upperStatus === 'STARTED' || upperStatus === 'PLAYING'" class="live-wrap">
-                <div class="live-pill">
-                  <i class="pi pi-circle-fill" />
-                  <span>LIVE</span>
-                </div>
-                <span class="round-text">{{ liveRoundText }}</span>
-              </div>
-              <div v-else-if="isResultStatus(item.statusRaw)" class="score-row">
+              <div v-if="showScore" class="score-row">
                 <span class="score-value" :class="{ winner: scoreParts.red > scoreParts.blue }">{{
                   scoreParts.red
                 }}</span>

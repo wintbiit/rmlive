@@ -316,7 +316,7 @@ async function mountPlayer(url: string) {
   ];
 
   // PC端启用 Chromecast
-  if (window.innerWidth > 768) {
+  if (!uiStore.isMobile) {
     plugins.push(artplayerPluginChromecast({}));
   }
 
@@ -327,23 +327,26 @@ async function mountPlayer(url: string) {
     volume: 0.7,
     muted: true,
     autoplay: true,
+    autoSize: true,
+    autoMini: true,
     setting: true,
     flip: true,
+    isLive: true,
     playbackRate: true,
     aspectRatio: true,
     subtitleOffset: true,
     hotkey: true,
-    pip: window.innerWidth > 768,
+    pip: !uiStore.isMobile,
     fullscreen: true,
-    fullscreenWeb: true,
+    fullscreenWeb: !uiStore.isMobile,
     quality: qualityItems.length > 1 ? qualityItems : undefined,
     airplay: true,
     gesture: true,
     screenshot: true,
     mutex: true,
     backdrop: true,
-    miniProgressBar: true,
-    playsInline: false,
+    playsInline: true,
+    autoOrientation: true,
     lock: true,
     settings: [
       {
