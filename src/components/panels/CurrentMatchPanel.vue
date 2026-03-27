@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { getRunningMatch, getScheduleRows } from '@/services/scheduleView';
+import { useRmDataStore } from '@/stores/rmData';
+import { useUiStore } from '@/stores/ui';
 import Card from 'primevue/card';
 import Panel from 'primevue/panel';
 import Tag from 'primevue/tag';
@@ -6,6 +9,7 @@ import { computed } from 'vue';
 import { resolvePayloadByZone, toMatchView } from '../../services/matchView';
 import type { CurrentAndNextMatches } from '../../types/api';
 import MatchBlock from './MatchBlock.vue';
+import ScheduleItem from './ScheduleItem.vue';
 
 interface Props {
   payload: CurrentAndNextMatches | null;
@@ -42,48 +46,66 @@ function onSelectTeam(teamName: string) {
 function onNextPanelCollapsedChange(collapsed: boolean) {
   emit('updateNextExpanded', !collapsed);
 }
+
+const uiStore = useUiStore();
+const dataStore = useRmDataStore();
+const runningMatch = computed(() => {
+  const rows = getScheduleRows(dataStore.schedule, dataStore.liveGameInfo);
+  console.log(
+    'currentAndNextMatches',
+    dataStore.currentAndNextMatches,
+    'liveGameInfo',
+    dataStore.liveGameInfo,
+    'rows',
+    rows,
+  );
+  return getRunningMatch(rows, props.selectedZoneId);
+});
 </script>
 
 <template>
-  <Card>
-    <template #content>
-      <MatchBlock
-        title="当前对局"
-        :match="current"
-        :hero="true"
-        :team-group-map="props.teamGroupMap"
-        start-prefix="开始"
-        @team-select="onSelectTeam"
-      />
-
-      <Panel
-        toggleable
-        class="next-panel"
-        :collapsed="!props.nextExpanded"
-        @update:collapsed="onNextPanelCollapsedChange"
-      >
-        <template #header>
-          <div class="next-header">
-            <div class="next-title-wrap">
-              <h3>{{ next ? '下一场对局' : '暂无下一场信息' }}</h3>
-              <small v-if="!props.nextExpanded && nextTeamsLabel" class="next-teams">{{ nextTeamsLabel }}</small>
-            </div>
-            <Tag v-if="next" :value="next.status" severity="contrast" />
-          </div>
-        </template>
-
+  <div>
+    <Card v-if="!uiStore.isMobile">
+      <template #content>
         <MatchBlock
-          title="下一场对局"
-          :match="next"
-          :compact="true"
-          :show-header="false"
+          title="当前对局"
+          :match="current"
+          :hero="true"
           :team-group-map="props.teamGroupMap"
-          start-prefix="预计"
+          start-prefix="开始"
           @team-select="onSelectTeam"
         />
-      </Panel>
-    </template>
-  </Card>
+
+        <Panel
+          toggleable
+          class="next-panel"
+          :collapsed="!props.nextExpanded"
+          @update:collapsed="onNextPanelCollapsedChange"
+        >
+          <template #header>
+            <div class="next-header">
+              <div class="next-title-wrap">
+                <h3>{{ next ? '下一场对局' : '暂无下一场信息' }}</h3>
+                <small v-if="!props.nextExpanded && nextTeamsLabel" class="next-teams">{{ nextTeamsLabel }}</small>
+              </div>
+              <Tag v-if="next" :value="next.status" severity="contrast" />
+            </div>
+          </template>
+
+          <MatchBlock
+            title="下一场对局"
+            :match="next"
+            :compact="true"
+            :show-header="false"
+            :team-group-map="props.teamGroupMap"
+            start-prefix="预计"
+            @team-select="onSelectTeam"
+          />
+        </Panel>
+      </template>
+    </Card>
+    <ScheduleItem v-else-if="runningMatch" :item="runningMatch"> </ScheduleItem>
+  </div>
 </template>
 
 <style scoped>
@@ -129,6 +151,12 @@ function onNextPanelCollapsedChange(collapsed: boolean) {
   .next-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (width <= 768px) {
+  .next-panel {
+    display: none;
   }
 }
 </style>

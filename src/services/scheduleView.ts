@@ -472,6 +472,18 @@ export function getRecentMatches(rows: ScheduleRowItem[], zoneId: string | null,
   return [...completed.slice(0, completedCount), ...upcoming.slice(0, upcomingCount)];
 }
 
+export function getRunningMatch(rows: ScheduleRowItem[], zoneId: string | null): ScheduleRowItem | null {
+  const zoneRows = filterScheduleRowsByZone(rows, zoneId);
+
+  for (const item of zoneRows) {
+    if (item.statusRaw.toUpperCase() === 'STARTED') {
+      return item;
+    }
+  }
+
+  return null;
+}
+
 function toDateKeyTimestamp(dateKey: string): number {
   if (dateKey === 'unknown') {
     return Number.POSITIVE_INFINITY;

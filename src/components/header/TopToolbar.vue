@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useUiStore } from '@/stores/ui';
 import Button from 'primevue/button';
 import Select from 'primevue/select';
 import SelectButton from 'primevue/selectbutton';
@@ -44,6 +45,8 @@ function onThemeChange(value: boolean) {
 function goToGithub() {
   window.open('https://github.com/scutrobotlab/rmlive', '_blank');
 }
+
+const uiStore = useUiStore();
 </script>
 
 <template>
@@ -51,7 +54,7 @@ function goToGithub() {
     <template #start>
       <div class="toolbar-brand">
         <img :src="brandLogoUrl" alt="RMLive logo" class="brand-logo" />
-        <div class="toolbar-brand-meta">
+        <div class="toolbar-brand-meta" v-if="!uiStore.isMobile">
           <h1>
             <span>RMLive - Better 直播间</span>
             <small v-if="scheduleEventTitle" class="event-title">{{ scheduleEventTitle }}</small>
@@ -124,16 +127,18 @@ function goToGithub() {
     </template>
 
     <template #end>
-      <UserProfilePop />
-      <Button
-        icon="pi pi-github"
-        rounded
-        text
-        size="small"
-        severity="contrast"
-        aria-label="访问 GitHub 仓库"
-        @click="goToGithub"
-      />
+      <div v-if="!uiStore.isMobile">
+        <UserProfilePop />
+        <Button
+          icon="pi pi-github"
+          rounded
+          text
+          size="small"
+          severity="contrast"
+          aria-label="访问 GitHub 仓库"
+          @click="goToGithub"
+        />
+      </div>
       <ThemeLogoButton :is-dark="isDark" @change="onThemeChange" />
     </template>
   </Toolbar>

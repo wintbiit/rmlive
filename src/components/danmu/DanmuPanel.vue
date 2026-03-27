@@ -23,7 +23,7 @@ const filteredCount = computed(() => virtualItems.value.length);
 
 <template>
   <section class="danmu-panel">
-    <div v-if="totalCount" class="list-meta">显示 {{ filteredCount }} / {{ totalCount }}</div>
+    <!-- <div v-if="totalCount" class="list-meta">显示 {{ filteredCount }} / {{ totalCount }}</div> -->
 
     <VirtualScroller
       v-if="virtualItems.length"

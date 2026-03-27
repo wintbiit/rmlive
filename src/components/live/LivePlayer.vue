@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useDanmuFilterStore } from '@/stores/danmuFilter';
+import { useUiStore } from '@/stores/ui';
 import { useUserInfoStore } from '@/stores/userInfo';
 import Artplayer, { Option } from 'artplayer';
 import artplayerPluginChromecast from 'artplayer-plugin-chromecast';
@@ -64,7 +65,6 @@ const filterSummary = computed(() => {
 
   return `关键词 ${danmuFilterStore.rules.keywords.length} / 学校 ${danmuFilterStore.rules.schools.length} / 用户 ${danmuFilterStore.rules.users.length}`;
 });
-let filterControlButtonEl: HTMLButtonElement | null = null;
 
 async function sendDanmuByRealtime(d: Danmu): Promise<boolean> {
   const content = String(d?.text ?? '').trim();
@@ -91,6 +91,14 @@ async function sendDanmuByRealtime(d: Danmu): Promise<boolean> {
     isAdmin: false,
     username: userInfoStore.userInfo.realName || userInfoStore.userInfo.nickname || '匿名用户',
   };
+  // const myAttributes: DanmuAttributes = {
+  //   nickname: userInfoStore.userInfo.nickname || '',
+  //   schoolName: userInfoStore.userInfo.school || '',
+  //   badge: userInfoStore.userInfo.badge?.[0] || '',
+  //   racingAge: String(userInfoStore.userInfo.racingAge ?? ''),
+  //   role: userInfoStore.userInfo.role || '',
+  //   username: userInfoStore.userInfo.nickname || '匿名用户',
+  // };
 
   try {
     await danmuService.value.sendMessage(content, myAttributes);
@@ -123,11 +131,6 @@ async function destroyDanmu() {
 }
 
 function destroyPlayer() {
-  if (filterControlButtonEl?.parentElement) {
-    filterControlButtonEl.parentElement.removeChild(filterControlButtonEl);
-  }
-  filterControlButtonEl = null;
-
   if (player) {
     player.destroy(false);
     player = null;
@@ -135,38 +138,6 @@ function destroyPlayer() {
   danmukuPlugin = null;
   playerReady = false;
   pendingDanmuQueue.length = 0;
-}
-
-function updateFilterControlButton() {
-  if (!filterControlButtonEl) {
-    return;
-  }
-
-  filterControlButtonEl.className = `art-control-filter ${filterActive.value ? 'is-active' : ''}`;
-  filterControlButtonEl.textContent = activeFilterCount.value ? `过滤 ${activeFilterCount.value}` : '过滤';
-  filterControlButtonEl.title = filterSummary.value;
-}
-
-function mountFilterControlButton() {
-  if (!container.value) {
-    return;
-  }
-
-  const controlsRight = container.value.querySelector('.art-controls-right');
-  if (!controlsRight || filterControlButtonEl) {
-    return;
-  }
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'art-control-filter';
-  button.addEventListener('click', () => {
-    filterDialogVisible.value = true;
-  });
-
-  controlsRight.prepend(button);
-  filterControlButtonEl = button;
-  updateFilterControlButton();
 }
 
 function pushDanmuToPlayer(msg: DanmuMessage) {
@@ -306,7 +277,9 @@ async function initDanmu(roomId: string) {
   }
 }
 
-function mountPlayer(url: string) {
+const uiStore = useUiStore();
+
+async function mountPlayer(url: string) {
   if (!container.value) {
     return;
   }
@@ -321,24 +294,30 @@ function mountPlayer(url: string) {
       default: item.value === props.selectedQualityRes,
     }));
 
+  const plugins: any[] = [
+    artplayerPluginDanmuku({
+      danmuku: [],
+      speed: 5,
+      margin: [10, '25%'],
+      opacity: 1,
+      fontSize: 22,
+      antiOverlap: true,
+      synchronousPlayback: true,
+      emitter: true,
+      filter: danmuFilterStore.matchTrackDanmu,
+      beforeEmit: sendDanmuByRealtime,
+    }),
+  ];
+
+  // PC端启用 Chromecast
+  if (window.innerWidth > 768) {
+    plugins.push(artplayerPluginChromecast({}));
+  }
+
   const playerOptions: Option = {
     container: container.value,
     url,
-    plugins: [
-      artplayerPluginDanmuku({
-        danmuku: [],
-        speed: 5,
-        margin: [10, '25%'],
-        opacity: 1,
-        fontSize: 22,
-        antiOverlap: true,
-        synchronousPlayback: true,
-        emitter: true,
-        filter: danmuFilterStore.matchTrackDanmu,
-        beforeEmit: sendDanmuByRealtime,
-      }),
-      artplayerPluginChromecast({}),
-    ],
+    plugins,
     volume: 0.7,
     muted: true,
     autoplay: true,
@@ -348,7 +327,7 @@ function mountPlayer(url: string) {
     aspectRatio: true,
     subtitleOffset: true,
     hotkey: true,
-    pip: true,
+    pip: window.innerWidth > 768,
     fullscreen: true,
     fullscreenWeb: true,
     quality: qualityItems.length > 1 ? qualityItems : undefined,
@@ -360,6 +339,20 @@ function mountPlayer(url: string) {
     miniProgressBar: true,
     playsInline: false,
     lock: true,
+    settings: [
+      {
+        html: filterActive.value ? `过滤 ${activeFilterCount.value}` : '过滤',
+        tooltip: filterSummary.value,
+        name: 'danmu-filter',
+        icon: '',
+        style: {
+          color: filterActive.value ? '#ffd04b' : '#fff',
+        },
+        onClick() {
+          filterDialogVisible.value = true;
+        },
+      },
+    ],
     customType: {
       m3u8(video: HTMLVideoElement, m3u8Url: string) {
         if (Hls.isSupported()) {
@@ -388,11 +381,10 @@ function mountPlayer(url: string) {
   player.on('ready', () => {
     playerReady = true;
     danmukuPlugin = (player as any).plugins?.artplayerPluginDanmuku;
-    mountFilterControlButton();
     flushPendingDanmu();
     try {
       player?.play();
-      if (!hasShownAutoplayNotice.value) {
+      if (!hasShownAutoplayNotice.value && !uiStore.isMobile) {
         hasShownAutoplayNotice.value = true;
         toast.add({
           severity: 'info',
@@ -420,10 +412,6 @@ watch(
     }
   },
 );
-
-watch([activeFilterCount, filterActive, filterSummary], () => {
-  updateFilterControlButton();
-});
 
 exposeDanmuDebugApi();
 
@@ -523,27 +511,6 @@ onBeforeUnmount(async () => {
 :deep(.p-message) {
   max-width: calc(100% - 0.5rem);
   word-break: break-word;
-}
-
-:deep(.art-control-filter) {
-  height: 1.7rem;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.4);
-  color: #fff;
-  border-radius: 999px;
-  padding: 0 0.5rem;
-  margin-right: 0.35rem;
-  font-size: 0.72rem;
-  cursor: pointer;
-}
-
-:deep(.art-control-filter.is-active) {
-  border-color: rgba(255, 208, 75, 0.9);
-  color: #ffd04b;
-}
-
-:deep(.art-control-filter:hover) {
-  background: rgba(0, 0, 0, 0.58);
 }
 
 @media (width <= 768px) {

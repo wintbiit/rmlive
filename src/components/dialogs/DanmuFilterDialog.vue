@@ -220,17 +220,7 @@ function resetRules() {
           @update:model-value="updateSchools"
         />
       </div>
-      <div class="input-row">
-        <InputText
-          v-model="customSchoolInput"
-          fluid
-          size="small"
-          placeholder="或手动输入学校后添加"
-          @keydown.enter.prevent="addCustomSchool"
-        />
-        <Button label="添加" size="small" :disabled="!canAddCustomSchool" @click="addCustomSchool" />
-      </div>
-      <small v-if="customSchoolDuplicate" class="hint">该学校已存在</small>
+      <!-- 移除自定义输入，仅保留MultiSelect -->
       <div class="tag-wrap">
         <span v-if="!rules.schools.length" class="empty">暂无学校规则</span>
         <Tag v-for="school in rules.schools" :key="`school-${school}`" severity="secondary" rounded>
@@ -269,17 +259,7 @@ function resetRules() {
           @update:model-value="updateUsers"
         />
       </div>
-      <div class="input-row">
-        <InputText
-          v-model="customUserInput"
-          fluid
-          size="small"
-          placeholder="或手动输入用户名/昵称后添加"
-          @keydown.enter.prevent="addCustomUser"
-        />
-        <Button label="添加" size="small" :disabled="!canAddCustomUser" @click="addCustomUser" />
-      </div>
-      <small v-if="customUserDuplicate" class="hint">该用户已存在</small>
+      <!-- 移除自定义输入，仅保留MultiSelect -->
       <div class="tag-wrap">
         <span v-if="!rules.users.length" class="empty">暂无用户规则</span>
         <Tag v-for="user in rules.users" :key="`user-${user}`" severity="secondary" rounded>

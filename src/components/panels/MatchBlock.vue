@@ -92,7 +92,6 @@ function showSlug(slug: string): boolean {
             <strong>{{ getScoreParts(match.score).blue }}</strong>
           </div>
         </div>
-        <Tag class="score-sub-tag" severity="contrast" icon="pi pi-chart-bar" :value="`比分 ${match.score}`" />
       </div>
     </div>
 
