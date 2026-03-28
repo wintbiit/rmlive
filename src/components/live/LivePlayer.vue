@@ -3,6 +3,7 @@ import { DanmuService } from '@/danmu/DanmuService';
 import { useDanmuFilterStore } from '@/stores/danmuFilter';
 import { useUiStore } from '@/stores/ui';
 import { isIFrame, useUserInfoStore } from '@/stores/userInfo';
+import { formatStructuredName } from '@/utils/danmuView';
 import Artplayer, { Option } from 'artplayer';
 import artplayerPluginChromecast from 'artplayer-plugin-chromecast';
 import artplayerPluginDanmuku, { type Danmu } from 'artplayer-plugin-danmuku';
@@ -82,28 +83,19 @@ async function sendDanmuByRealtime(d: Danmu): Promise<boolean> {
     return false;
   }
 
-  // const myAttributes: DanmuAttributes = {
-  //   nickname: userInfoStore.userInfo.nickname || '',
-  //   schoolName: userInfoStore.userInfo.school || '',
-  //   badge: userInfoStore.userInfo.badge?.[0] || '',
-  //   racingAge: String(userInfoStore.userInfo.racingAge ?? ''),
-  //   position: userInfoStore.userInfo.role || '',
-  //   isAdmin: false,
-  //   username: formatStructuredName({
-  //     year: userInfoStore.userInfo.racingAge ? `${userInfoStore.userInfo.racingAge}` : '',
-  //     role: userInfoStore.userInfo.role || '',
-  //     school: userInfoStore.userInfo.school || '',
-  //     nickname: userInfoStore.userInfo.nickname || '',
-  //   }),
-  // };
   const myAttributes: DanmuAttributes = {
-    nickname: 'RM粉丝大管家',
-    schoolName: '',
-    badge: 'admin',
-    racingAge: '',
-    position: 'admin',
-    isAdmin: true,
-    username: 'RM粉丝大管家',
+    nickname: userInfoStore.userInfo.nickname || '',
+    schoolName: userInfoStore.userInfo.school || '',
+    badge: userInfoStore.userInfo.badge?.[0] || '',
+    racingAge: String(userInfoStore.userInfo.racingAge ?? ''),
+    position: userInfoStore.userInfo.role || '',
+    isAdmin: false,
+    username: formatStructuredName({
+      year: userInfoStore.userInfo.racingAge ? `${userInfoStore.userInfo.racingAge}` : '',
+      role: userInfoStore.userInfo.role || '',
+      school: userInfoStore.userInfo.school || '',
+      nickname: userInfoStore.userInfo.nickname || '',
+    }),
   };
 
   try {
