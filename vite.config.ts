@@ -1,6 +1,7 @@
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vite';
 
 // https://vite.dev/config/
@@ -44,6 +45,35 @@ export default defineConfig(({ mode }) => {
     base: process.env.VITE_BASE ?? '/',
     plugins: [
       vue(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
+        manifest: {
+          name: 'RMLive - Better 直播间',
+          short_name: 'RMLive',
+          description: '更清晰的赛事视图，更顺滑的直播体验。',
+          start_url: './',
+          display: 'standalone',
+          background_color: '#020617',
+          theme_color: '#0f172a',
+          icons: [
+            {
+              src: 'rmlive-logo.svg',
+              sizes: 'any',
+              type: 'image/svg+xml',
+              purpose: 'any',
+            },
+          ],
+        },
+        injectManifest: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,woff,ttf}'],
+        },
+        devOptions: {
+          enabled: true,
+        },
+      }),
       isAnalyze
         ? visualizer({
             filename: 'dist/stats.html',

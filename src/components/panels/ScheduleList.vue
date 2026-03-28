@@ -32,9 +32,11 @@ function onTeamSelect(payload: TeamSelectPayload) {
 
   <div v-else class="schedule-list">
     <section v-for="group in dateGroups" :key="group.date" class="date-group">
-      <Divider align="left" type="solid" class="date-divider">
-        <b class="divider-date">{{ group.dateLabel }}</b>
-      </Divider>
+      <div class="date-sticky">
+        <Divider align="left" type="solid" class="date-divider">
+          <b class="divider-date">{{ group.dateLabel }}</b>
+        </Divider>
+      </div>
 
       <ScheduleItem
         v-for="match in group.items"
@@ -65,6 +67,19 @@ function onTeamSelect(payload: TeamSelectPayload) {
 .date-group {
   margin-bottom: 0.55rem;
   min-width: 0;
+}
+
+.date-sticky {
+  position: sticky;
+  top: var(--schedule-date-sticky-top, 0);
+  z-index: 2;
+  margin: 0 -0.15rem;
+  padding: 0 0.15rem;
+  background: var(--p-content-background, var(--surface-ground, #fff));
+}
+
+.app-dark .date-sticky {
+  background: var(--p-content-background, var(--surface-ground));
 }
 
 .date-divider {

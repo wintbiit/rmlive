@@ -8,6 +8,7 @@ import Tag from 'primevue/tag';
 import { computed, ref } from 'vue';
 import TeamInfoCard from '../common/TeamInfoCard.vue';
 import ReplayVideoDialog from '../dialogs/ReplayVideoDialog.vue';
+import ScheduleSubscription from './ScheduleSubscription.vue';
 
 interface Props {
   item: MatchView;
@@ -90,6 +91,11 @@ const showScore = computed(() => {
 
 const isLiving = computed(() => ['STARTED', 'PLAYING'].includes(upperStatus.value));
 
+const isMatchNotYetStarted = computed(() => {
+  const u = upperStatus.value;
+  return !['STARTED', 'PLAYING', 'DONE', 'FINISHED', 'ENDED'].includes(u);
+});
+
 const slug = computed(() => {
   const raw = String(props.item.slug ?? '').trim();
   if (!raw || raw === '-') {
@@ -124,6 +130,7 @@ const slug = computed(() => {
               aria-label="查看回放"
               @click="openReplay"
             />
+            <ScheduleSubscription v-if="isMatchNotYetStarted" :match-id="item.id" />
           </div>
           <div class="header-meta">
             <Tag v-if="slug" :value="slug" severity="contrast" />

@@ -1,0 +1,118 @@
+/// <reference lib="webworker" />
+/**
+ * Schedule notifications: fetch `schedule.json` independently of the main bundle, persist match
+ * snapshots in IndexedDB, diff vs previous run, then `showNotification` when permission granted.
+ *
+ * Polling model:
+ * - Primary: main thread posts POLL_SCHEDULE on an interval while the tab is visible (see scheduleNotifyClient).
+ * - Best-effort: Background Sync tag `schedule-sync` and Periodic Sync tag `schedule` when the browser supports them
+ *   (intervals are not guaranteed; SW may be suspended).
+ */
+import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
+import type { Schedule } from './types/api';
+import {
+  getAllMatchSnapshots,
+  getPrefsFromDb,
+  replaceAllMatchSnapshots,
+} from './lib/scheduleNotifyDb';
+import { getScheduleJsonUrl } from './utils/scheduleJsonUrl';
+import {
+  diffScheduleSnapshots,
+  matchViewToNotifySnapshot,
+  type MatchNotifySnapshot,
+} from './utils/scheduleNotifyDiff';
+import { getScheduleRows } from './utils/matchView';
+
+declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: string[] };
+
+cleanupOutdatedCaches();
+precacheAndRoute(self.__WB_MANIFEST);
+
+async function fetchScheduleJson(): Promise<Schedule | null> {
+  const url = getScheduleJsonUrl();
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) {
+    return null;
+  }
+  return res.json() as Promise<Schedule>;
+}
+
+function notificationBody(type: string, snap: MatchNotifySnapshot): string {
+  const score = `${snap.redGames} : ${snap.blueGames}`;
+  const zone = snap.zoneName ? ` · ${snap.zoneName}` : '';
+  if (type === 'match_start') {
+    return `已开始${zone}`;
+  }
+  if (type === 'match_end') {
+    return `最终比分 ${score}${zone}`;
+  }
+  return `当前比分 ${score}${zone}`;
+}
+
+async function runSchedulePoll(): Promise<void> {
+  const prefs = await getPrefsFromDb();
+  const previous = await getAllMatchSnapshots();
+  const schedule = await fetchScheduleJson();
+  if (!schedule) {
+    return;
+  }
+
+  const rows = getScheduleRows(schedule, null);
+  const snapshots = rows.map(matchViewToNotifySnapshot).filter((s) => s.id);
+
+  const events = diffScheduleSnapshots(previous, snapshots, {
+    policy: prefs.policy,
+    followedIds: new Set(prefs.followedMatchIds ?? []),
+  });
+
+  await replaceAllMatchSnapshots(snapshots);
+
+  const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  if (!canNotify || events.length === 0) {
+    return;
+  }
+
+  for (const { type, snap } of events) {
+    const title =
+      type === 'match_start'
+        ? `比赛开始 · ${snap.redTeamName} vs ${snap.blueTeamName}`
+        : type === 'match_end'
+          ? `比赛结束 · ${snap.redTeamName} vs ${snap.blueTeamName}`
+          : `小局结束 · ${snap.redTeamName} vs ${snap.blueTeamName}`;
+    await self.registration.showNotification(title, {
+      body: notificationBody(type, snap),
+      icon: '/rmlive-logo.svg',
+      badge: '/rmlive-logo.svg',
+      tag: `match-${snap.id}-${type}`,
+    });
+  }
+}
+
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  const data = event.data as { type?: string } | undefined;
+  if (data?.type === 'POLL_SCHEDULE' || data?.type === 'PREFS_UPDATED') {
+    event.waitUntil(runSchedulePoll());
+  }
+});
+
+self.addEventListener('sync', (event: Event) => {
+  const ev = event as ExtendableEvent & { tag: string };
+  if (ev.tag === 'schedule-sync') {
+    ev.waitUntil(runSchedulePoll());
+  }
+});
+
+self.addEventListener('periodicsync', (event: Event) => {
+  const ev = event as ExtendableEvent & { tag: string };
+  if (ev.tag === 'schedule') {
+    ev.waitUntil(runSchedulePoll());
+  }
+});
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});

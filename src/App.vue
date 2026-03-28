@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { bindDanmuRoomReset } from './composables/danmuLifecycle';
 import { scheduleDeferredMount } from './composables/deferredMount';
+import { requestNotificationPermissionOnLaunch } from './composables/notificationPermissionOnLaunch';
+import { useScheduleNotifyPolling } from './composables/scheduleNotifyClient';
 import type { TeamSelectPayload } from './types/teamSelect';
 import { useDanmuStore } from './stores/danmu';
 import { useRmDataStore } from './stores/rmData';
+import { useScheduleNotifyStore } from './stores/scheduleNotify';
 import { useUiStore } from './stores/ui';
 import type { DanmuMessage } from './types/api';
 import { storeToRefs } from 'pinia';
@@ -19,6 +22,9 @@ const TeamInfoDialog = defineAsyncComponent(() => import('./components/dialogs/T
 const dataStore = useRmDataStore();
 const danmuStore = useDanmuStore();
 const uiStore = useUiStore();
+const scheduleNotifyStore = useScheduleNotifyStore();
+
+useScheduleNotifyPolling();
 
 const { selectedZoneChatRoomId } = storeToRefs(dataStore);
 
@@ -55,6 +61,8 @@ function onOpenTeamData(payload: string | TeamSelectPayload) {
 let stopDeferredMount: (() => void) | null = null;
 
 onMounted(() => {
+  requestNotificationPermissionOnLaunch();
+  void scheduleNotifyStore.syncPrefsToIdb();
   uiStore.initializeUi();
   dataStore.startPolling();
   stopDeferredMount = scheduleDeferredMount(() => {

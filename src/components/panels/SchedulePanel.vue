@@ -223,6 +223,11 @@ function onTeamSelect(payload: TeamSelectPayload) {
   max-width: 100%;
 }
 
+/* Let schedule date rows use sticky relative to the page scroll (avoid clipping in tab panels). */
+.schedule-panel-card :deep(.p-tabpanels) {
+  overflow: visible;
+}
+
 .tab-label {
   display: inline-flex;
   align-items: center;

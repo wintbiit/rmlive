@@ -2,12 +2,13 @@
 import { useRmDataStore } from '@/stores/rmData';
 import { useUiStore } from '@/stores/ui';
 import type { ZoneOptionItem } from '@/utils/zoneView';
+import { storeToRefs } from 'pinia';
 import Button from 'primevue/button';
 import Select from 'primevue/select';
 import SelectButton from 'primevue/selectbutton';
 import Toolbar from 'primevue/toolbar';
-import { storeToRefs } from 'pinia';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import SettingsDialog from '../dialogs/SettingsDialog.vue';
 import ThemeLogoButton from './ThemeLogoButton.vue';
 import UserProfilePop from './UserProfilePop.vue';
 
@@ -38,6 +39,8 @@ function onThemeChange(value: boolean) {
 function goToGithub() {
   window.open('https://github.com/scutrobotlab/rmlive', '_blank');
 }
+
+const settingsVisible = ref(false);
 </script>
 
 <template>
@@ -118,6 +121,18 @@ function goToGithub() {
     </template>
 
     <template #end>
+      <Button
+        rounded
+        text
+        size="small"
+        icon="pi pi-cog"
+        severity="contrast"
+        class="settings-entry"
+        aria-label="打开设置"
+        @click="settingsVisible = true"
+      >
+      </Button>
+      <SettingsDialog v-model:visible="settingsVisible" />
       <UserProfilePop v-if="!uiStore.isMobile" />
       <Button
         v-if="!uiStore.isMobile"
@@ -230,6 +245,18 @@ function goToGithub() {
 .zone-date {
   font-size: 0.65rem;
   opacity: 0.74;
+}
+
+.settings-entry {
+  padding: 0.25rem;
+}
+
+.settings-entry-logo {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
+  object-fit: contain;
+  opacity: 0.92;
 }
 
 @media (width <= 768px) {
