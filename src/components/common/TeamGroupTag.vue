@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TeamSelectPayload } from '@/types/teamSelect';
-import { useRmDataStore } from '@/stores/rmData';
+import { useRmDataStore } from '@/stores/rmData/index';
 import { buildGroupRankPanelModel } from '@/utils/matchDataFormat';
 import Message from 'primevue/message';
 import Popover from 'primevue/popover';

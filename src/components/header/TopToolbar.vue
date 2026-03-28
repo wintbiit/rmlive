@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRmDataStore } from '@/stores/rmData';
+import { useRmDataStore } from '@/stores/rmData/index';
 import { useUiStore } from '@/stores/ui';
 import type { ZoneOptionItem } from '@/utils/zoneView';
 import { storeToRefs } from 'pinia';
@@ -25,7 +25,9 @@ function showZoneDate(option: ZoneOptionItem): boolean {
 }
 
 const currentZoneOption = computed(() => {
-  return zoneOptions.value.find((item) => String(item.value) === String(selectedZoneId.value ?? '')) ?? null;
+  return (
+    zoneOptions.value.find((item: ZoneOptionItem) => String(item.value) === String(selectedZoneId.value ?? '')) ?? null
+  );
 });
 
 function onZoneChange(value: string) {

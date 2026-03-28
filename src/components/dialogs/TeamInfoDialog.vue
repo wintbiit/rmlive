@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TeamSelectPayload } from '@/types/teamSelect';
-import { useRmDataStore } from '@/stores/rmData';
+import { useRmDataStore } from '@/stores/rmData/index';
 import { useUiStore } from '@/stores/ui';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';

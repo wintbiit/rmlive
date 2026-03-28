@@ -5,7 +5,7 @@ import { requestNotificationPermissionOnLaunch } from './composables/notificatio
 import { useScheduleNotifyPolling } from './composables/scheduleNotifyClient';
 import type { TeamSelectPayload } from './types/teamSelect';
 import { useDanmuStore } from './stores/danmu';
-import { useRmDataStore } from './stores/rmData';
+import { useRmDataStore } from './stores/rmData/index';
 import { useScheduleNotifyStore } from './stores/scheduleNotify';
 import { useUiStore } from './stores/ui';
 import type { DanmuMessage } from './types/api';

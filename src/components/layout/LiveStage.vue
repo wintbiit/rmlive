@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRmDataStore } from '@/stores/rmData';
+import { useRmDataStore } from '@/stores/rmData/index';
 import { useUiStore } from '@/stores/ui';
 import { Fieldset } from 'primevue';
 import Splitter from 'primevue/splitter';
