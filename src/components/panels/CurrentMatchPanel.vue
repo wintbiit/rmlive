@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { useRmDataStore } from '@/stores/rmData/index';
+import { useRmDataStore } from '@/stores/rmData';
 import { useUiStore } from '@/stores/ui';
 import type { TeamSelectPayload } from '@/types/teamSelect';
 import { resolvePayloadByZone, toMatchView } from '@/utils/matchView';
+import { storeToRefs } from 'pinia';
 import Card from 'primevue/card';
 import Panel from 'primevue/panel';
 import Tag from 'primevue/tag';
-import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import MatchBlock from './MatchBlock.vue';
 import ScheduleItem from './ScheduleItem.vue';

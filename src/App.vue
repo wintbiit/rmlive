@@ -1,14 +1,4 @@
 <script setup lang="ts">
-import { bindDanmuRoomReset } from './composables/danmuLifecycle';
-import { scheduleDeferredMount } from './composables/deferredMount';
-import { requestNotificationPermissionOnLaunch } from './composables/notificationPermissionOnLaunch';
-import { useScheduleNotifyPolling } from './composables/scheduleNotifyClient';
-import type { TeamSelectPayload } from './types/teamSelect';
-import { useDanmuStore } from './stores/danmu';
-import { useRmDataStore } from './stores/rmData/index';
-import { useScheduleNotifyStore } from './stores/scheduleNotify';
-import { useUiStore } from './stores/ui';
-import type { DanmuMessage } from './types/api';
 import { storeToRefs } from 'pinia';
 import Toast from 'primevue/toast';
 import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -16,6 +6,16 @@ import TopToolbar from './components/header/TopToolbar.vue';
 import LiveStage from './components/layout/LiveStage.vue';
 import ScheduleArea from './components/layout/ScheduleArea.vue';
 import CurrentMatchPanel from './components/panels/CurrentMatchPanel.vue';
+import { bindDanmuRoomReset } from './composables/danmuLifecycle';
+import { scheduleDeferredMount } from './composables/deferredMount';
+import { requestNotificationPermissionOnLaunch } from './composables/notificationPermissionOnLaunch';
+import { useScheduleNotifyPolling } from './composables/scheduleNotifyClient';
+import { useDanmuStore } from './stores/danmu';
+import { useRmDataStore } from './stores/rmData';
+import { useScheduleNotifyStore } from './stores/scheduleNotify';
+import { useUiStore } from './stores/ui';
+import type { DanmuMessage } from './types/api';
+import type { TeamSelectPayload } from './types/teamSelect';
 
 const TeamInfoDialog = defineAsyncComponent(() => import('./components/dialogs/TeamInfoDialog.vue'));
 
@@ -51,10 +51,8 @@ function onOpenTeamData(payload: string | TeamSelectPayload) {
   dataDialogTeam.value = teamName;
   dataDialogCollege.value = typeof payload === 'string' ? null : (payload.collegeName ?? null);
   const { selectedZoneId, selectedZoneName } = dataStore;
-  dataDialogZoneId.value =
-    typeof payload === 'string' ? selectedZoneId : (payload.zoneId ?? selectedZoneId);
-  dataDialogZoneName.value =
-    typeof payload === 'string' ? selectedZoneName : (payload.zoneName ?? selectedZoneName);
+  dataDialogZoneId.value = typeof payload === 'string' ? selectedZoneId : (payload.zoneId ?? selectedZoneId);
+  dataDialogZoneName.value = typeof payload === 'string' ? selectedZoneName : (payload.zoneName ?? selectedZoneName);
   dataDialogVisible.value = true;
 }
 

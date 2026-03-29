@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { useRmDataStore } from '@/stores/rmData/index';
+import { useRmDataStore } from '@/stores/rmData';
 import { useUiStore } from '@/stores/ui';
+import { storeToRefs } from 'pinia';
 import { Fieldset } from 'primevue';
 import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
-import { storeToRefs } from 'pinia';
 import { defineAsyncComponent } from 'vue';
 import type { DanmuMessage } from '../../types/api';
 

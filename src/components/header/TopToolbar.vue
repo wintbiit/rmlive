@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRmDataStore } from '@/stores/rmData/index';
+import { useRmDataStore } from '@/stores/rmData';
 import { useUiStore } from '@/stores/ui';
 import type { ZoneOptionItem } from '@/utils/zoneView';
 import { storeToRefs } from 'pinia';
@@ -31,7 +31,7 @@ const currentZoneOption = computed(() => {
 });
 
 function onZoneChange(value: string) {
-  dataStore.setZone(value);
+  dataStore.selectZone(value);
 }
 
 function onThemeChange(value: boolean) {
