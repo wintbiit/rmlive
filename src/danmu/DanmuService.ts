@@ -1,12 +1,9 @@
 import { useLocalStorage } from '@vueuse/core';
 import { v4 as uuid } from 'uuid';
 import type { DanmuAttributes, DanmuMessage, DanmuMode } from '../types/api';
-import { fetchJson } from '../api/http';
-import { buildLiveJsonUrl } from '../utils/urlProxy';
 
 const APP_ID = import.meta.env.VITE_CHATROOM_APP_ID as string;
 const APP_KEY = import.meta.env.VITE_CHATROOM_APP_KEY as string;
-const CHATROOM_HISTORY_URL = '/live_json/chatroom.json';
 const GLOBAL_REALTIME_KEY = '__rmLiveLeancloudRealtime';
 const GLOBAL_IMCLIENT_KEY = '__rmLiveLeancloudImClient';
 
@@ -140,7 +137,6 @@ export class DanmuService {
 
       if (this.handlers.includeHistory) {
         await this.loadHistoryFromConversation(this.conversationInstance);
-        await this.loadHistoryFromChatroomApi(chatRoomId);
       }
 
       this.messageHandler = (message: any) => {
@@ -396,23 +392,6 @@ export class DanmuService {
         } as DanmuMessage;
       })
       .filter((v): v is DanmuMessage => !!v);
-  }
-
-  private async loadHistoryFromChatroomApi(chatRoomId: string): Promise<void> {
-    try {
-      const url = buildLiveJsonUrl(CHATROOM_HISTORY_URL);
-      const raw = await fetchJson<unknown>(url, {
-        timeoutMs: 9000,
-        retries: 1,
-        retryDelayMs: 400,
-      });
-
-      const normalized = this.normalizeChatroomHistory(raw, chatRoomId);
-
-      normalized.slice(-100).forEach((msg) => this.emitDanmu(msg));
-    } catch (error) {
-      console.warn('[Danmu] Failed to load chatroom.json history:', error);
-    }
   }
 
   async sendMessage(text: string, attrs: DanmuAttributes): Promise<void> {
