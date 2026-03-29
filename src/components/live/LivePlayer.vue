@@ -44,6 +44,8 @@ const emit = defineEmits<{
 const container = ref<HTMLDivElement | null>(null);
 let player: Artplayer | null = null;
 let playerReady = false;
+/** Hls instance for current stream; must be torn down before each new customType load and on player destroy. */
+let liveHls: InstanceType<typeof Hls> | null = null;
 let danmukuPlugin: any = null;
 const pendingDanmuQueue: DanmuMessage[] = [];
 const danmuService = ref<DanmuService | null>(null);
@@ -117,6 +119,25 @@ async function sendDanmuByRealtime(d: Danmu): Promise<boolean> {
   return false; // 阻止 artplayer 插件的默认发送行为
 }
 
+function destroyAttachedHls() {
+  if (liveHls) {
+    liveHls.destroy();
+    liveHls = null;
+  }
+}
+
+async function exitPipIfNeeded() {
+  const vid = container.value?.querySelector('video');
+  if (!vid || document.pictureInPictureElement !== vid) {
+    return;
+  }
+  try {
+    await document.exitPictureInPicture();
+  } catch {
+    // ignore InvalidStateError, etc.
+  }
+}
+
 async function destroyDanmu() {
   if (connectingService) {
     try {
@@ -138,6 +159,7 @@ async function destroyDanmu() {
 }
 
 function destroyPlayer() {
+  destroyAttachedHls();
   if (player) {
     player.destroy(false);
     player = null;
@@ -287,6 +309,33 @@ async function initDanmu(roomId: string) {
 
 const uiStore = useUiStore();
 
+function buildQualityItems() {
+  return (props.qualityOptions ?? [])
+    .filter((item) => item.src && item.src.startsWith('http'))
+    .map((item) => ({
+      html: item.label,
+      url: item.src,
+      default: item.value === props.selectedQualityRes,
+    }));
+}
+
+function updateQualityControl() {
+  if (!player || !playerReady) {
+    return;
+  }
+  const qualityItems = buildQualityItems();
+  const p = player as Artplayer & { controls?: { remove?: (name: string) => void } };
+  if (qualityItems.length > 1) {
+    player.quality = qualityItems;
+  } else {
+    try {
+      p.controls?.remove?.('quality');
+    } catch {
+      // no quality control to remove
+    }
+  }
+}
+
 async function mountPlayer(url: string) {
   if (!container.value) {
     return;
@@ -294,13 +343,7 @@ async function mountPlayer(url: string) {
 
   destroyPlayer();
 
-  const qualityItems = (props.qualityOptions ?? [])
-    .filter((item) => item.src && item.src.startsWith('http'))
-    .map((item) => ({
-      html: item.label,
-      url: item.src,
-      default: item.value === props.selectedQualityRes,
-    }));
+  const qualityItems = buildQualityItems();
 
   const plugins: any[] = [
     artplayerPluginDanmuku({
@@ -330,13 +373,13 @@ async function mountPlayer(url: string) {
     muted: true,
     autoplay: true,
     autoSize: true,
-    autoMini: true,
+    autoMini: false,
     setting: true,
-    flip: true,
+    flip: false,
     isLive: true,
-    playbackRate: true,
+    playbackRate: false,
     aspectRatio: true,
-    subtitleOffset: true,
+    subtitleOffset: false,
     hotkey: true,
     pip: !uiStore.isMobile,
     fullscreen: true,
@@ -344,7 +387,7 @@ async function mountPlayer(url: string) {
     quality: qualityItems.length > 1 ? qualityItems : undefined,
     airplay: true,
     gesture: true,
-    screenshot: true,
+    screenshot: false,
     mutex: true,
     backdrop: true,
     playsInline: true,
@@ -366,21 +409,22 @@ async function mountPlayer(url: string) {
     ],
     customType: {
       m3u8(video: HTMLVideoElement, m3u8Url: string) {
+        destroyAttachedHls();
         if (Hls.isSupported()) {
           const hls = new Hls({
             lowLatencyMode: true,
             liveDurationInfinity: true,
             liveSyncMode: 'edge',
-            backBufferLength: 8, // 只保留最近8秒已播放内容
-            maxBufferLength: 10, // 向前最多缓冲10秒
-            maxMaxBufferLength: 30, // 突破上限30秒
-            liveSyncDurationCount: 3, // 距直播边缘3个segment
-            maxLiveSyncPlaybackRate: 1.0, // 禁用倍速追赶（避免画面加速）
-            liveSyncOnStallIncrease: 0.25, // 卡顿恢复后增加0.25秒缓冲
+            backBufferLength: 8,
+            maxBufferLength: 10,
+            maxMaxBufferLength: 30,
+            liveSyncDurationCount: 3,
+            maxLiveSyncPlaybackRate: 1.0,
+            liveSyncOnStallIncrease: 0.25,
           });
+          liveHls = hls;
           hls.loadSource(m3u8Url);
           hls.attachMedia(video);
-          player?.on('destroy', () => hls.destroy());
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = m3u8Url;
         }
@@ -395,6 +439,7 @@ async function mountPlayer(url: string) {
   player.on('ready', () => {
     playerReady = true;
     danmukuPlugin = (player as any).plugins?.artplayerPluginDanmuku;
+    updateQualityControl();
     flushPendingDanmu();
     try {
       player?.play();
@@ -411,6 +456,25 @@ async function mountPlayer(url: string) {
       // Ignore autoplay rejection; controls remain available for manual play.
     }
   });
+}
+
+async function applyStreamUrl(url: string) {
+  if (!container.value) {
+    return;
+  }
+
+  if (player && playerReady) {
+    try {
+      await exitPipIfNeeded();
+      await player.switchUrl(url);
+      updateQualityControl();
+      return;
+    } catch (error) {
+      console.warn('[LivePlayer] switchUrl failed, remounting player', error);
+    }
+  }
+
+  await mountPlayer(url);
 }
 
 watch(
@@ -433,12 +497,21 @@ watch(
   () => props.streamUrl,
   (url) => {
     if (url) {
-      mountPlayer(url);
+      void applyStreamUrl(url);
     } else {
       destroyPlayer();
     }
   },
   { immediate: true },
+);
+
+watch(
+  () => [props.qualityOptions, props.selectedQualityRes] as const,
+  () => {
+    if (player && playerReady) {
+      updateQualityControl();
+    }
+  },
 );
 
 onBeforeUnmount(async () => {

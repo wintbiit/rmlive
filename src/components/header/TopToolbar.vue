@@ -123,6 +123,7 @@ const settingsVisible = ref(false);
     </template>
 
     <template #end>
+      <UserProfilePop v-if="!uiStore.isMobile" />
       <Button
         rounded
         text
@@ -135,7 +136,6 @@ const settingsVisible = ref(false);
       >
       </Button>
       <SettingsDialog v-model:visible="settingsVisible" />
-      <UserProfilePop v-if="!uiStore.isMobile" />
       <Button
         v-if="!uiStore.isMobile"
         icon="pi pi-github"
