@@ -6,8 +6,8 @@ import type { TeamSelectPayload } from '@/types/teamSelect';
 import { storeToRefs } from 'pinia';
 import Card from 'primevue/card';
 import { computed, watch } from 'vue';
+import ScheduleItem from '../common/ScheduleItem.vue';
 import MatchFirepowerBar from './MatchFirepowerBar.vue';
-import ScheduleItem from './ScheduleItem.vue';
 
 const emit = defineEmits<{
   teamSelect: [payload: TeamSelectPayload];

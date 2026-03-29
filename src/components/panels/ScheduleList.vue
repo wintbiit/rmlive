@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import Divider from 'primevue/divider';
-import { computed } from 'vue';
 import type { TeamSelectPayload } from '@/types/teamSelect';
 import { groupScheduleRowsByDate, type MatchView } from '@/utils/matchView';
-import ScheduleItem from './ScheduleItem.vue';
+import Divider from 'primevue/divider';
+import { computed } from 'vue';
+import ScheduleItem from '../common/ScheduleItem.vue';
 
 interface Props {
   rows: MatchView[];

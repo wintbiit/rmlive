@@ -7,8 +7,8 @@ import Card from 'primevue/card';
 import Tag from 'primevue/tag';
 import { computed, ref } from 'vue';
 import TeamInfoCard from '../common/TeamInfoCard.vue';
-import LivingTag from './LivingTag.vue';
 import ReplayVideoDialog from '../dialogs/ReplayVideoDialog.vue';
+import LivingTag from './LivingTag.vue';
 import ScheduleSubscription from './ScheduleSubscription.vue';
 
 interface Props {
