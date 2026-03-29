@@ -191,6 +191,8 @@ const slug = computed(() => {
           </div>
         </div>
 
+        <slot name="belowTeams" />
+
         <ReplayVideoDialog
           v-if="item.replayVideo"
           v-model:visible="replayVisible"

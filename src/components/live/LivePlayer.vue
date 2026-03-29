@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { DanmuService } from '@/danmu/DanmuService';
 import { useDanmuFilterStore } from '@/stores/danmuFilter';
+import { useMatchEngagementStore } from '@/stores/matchEngagement';
 import { useUiStore } from '@/stores/ui';
 import { isIFrame, useUserInfoStore } from '@/stores/userInfo';
 import { formatStructuredName } from '@/utils/danmuView';
@@ -54,6 +55,7 @@ let roomSwitchToken = 0;
 let connectingService: DanmuService | null = null;
 
 const danmuFilterStore = useDanmuFilterStore();
+const matchEngagementStore = useMatchEngagementStore();
 const userInfoStore = useUserInfoStore();
 const activeFilterCount = computed(() => danmuFilterStore.activeRuleCount);
 const filterActive = computed(() => danmuFilterStore.rules.enabled && activeFilterCount.value > 0);
@@ -156,6 +158,7 @@ async function destroyDanmu() {
     }
     danmuService.value = null;
   }
+  matchEngagementStore.registerDanmuService(null);
 }
 
 function destroyPlayer() {
@@ -255,6 +258,8 @@ async function initDanmu(roomId: string) {
   }
 
   if (currentRoomId === roomId && danmuService.value) {
+    matchEngagementStore.registerDanmuService(danmuService.value);
+    void matchEngagementStore.refreshHydrate();
     return;
   }
 
@@ -275,6 +280,18 @@ async function initDanmu(roomId: string) {
           pushDanmuToPlayer(msg);
         }
       },
+      onEngagementMessage: (p) => {
+        if (token !== roomSwitchToken) {
+          return;
+        }
+        matchEngagementStore.ingestLive(p);
+      },
+      onEngagementHydrate: (list) => {
+        if (token !== roomSwitchToken) {
+          return;
+        }
+        matchEngagementStore.hydrateFromHistory(list);
+      },
       onError: (error) => {
         console.error('[LivePlayer] Danmu service error:', error);
       },
@@ -294,6 +311,8 @@ async function initDanmu(roomId: string) {
     }
 
     danmuService.value = nextService;
+    matchEngagementStore.registerDanmuService(nextService);
+    void matchEngagementStore.refreshHydrate();
   } catch (error) {
     if (connectingService) {
       try {
@@ -489,6 +508,7 @@ watch(
       void destroyDanmu();
     }
   },
+  { immediate: true },
 );
 
 exposeDanmuDebugApi();

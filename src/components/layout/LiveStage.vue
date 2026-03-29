@@ -28,6 +28,7 @@ const emit = defineEmits<{
 
 const LivePlayer = defineAsyncComponent(() => import('../live/LivePlayer.vue'));
 const DanmuPanel = defineAsyncComponent(() => import('../danmu/DanmuPanel.vue'));
+const MatchReactionStrip = defineAsyncComponent(() => import('../panels/MatchReactionStrip.vue'));
 
 function onRetry() {
   void dataStore.retryLiveStream();
@@ -53,6 +54,7 @@ function onDanmu(msg: DanmuMessage) {
             @retry="onRetry"
             @danmu="onDanmu"
           />
+          <MatchReactionStrip />
         </div>
       </SplitterPanel>
 
@@ -72,6 +74,7 @@ function onDanmu(msg: DanmuMessage) {
         @retry="onRetry"
         @danmu="onDanmu"
       />
+      <MatchReactionStrip />
 
       <Fieldset legend="弹幕列表" toggleable class="mobile-danmu-panel">
         <div class="mobile-danmu-wrap">

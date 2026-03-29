@@ -1,16 +1,39 @@
 import { useLocalStorage } from '@vueuse/core';
 import { v4 as uuid } from 'uuid';
+import type {
+  EngagementInbound,
+} from '../leancloud/rmliveIm';
+import {
+  encodeTeamTarget,
+  MSG_TYPE_MATCH_REACTION,
+  MSG_TYPE_SUPPORT_TEAM,
+  parseEngagementFromAttributes,
+  RMLIVE_MSG_FOR_MATCH,
+  RMLIVE_MSG_FOR_TEAM,
+  RMLIVE_MSG_TYPE,
+  RMLIVE_REACTION_ID,
+} from '../leancloud/rmliveIm';
 import type { DanmuAttributes, DanmuMessage, DanmuMode } from '../types/api';
 
 const APP_ID = import.meta.env.VITE_CHATROOM_APP_ID as string;
 const APP_KEY = import.meta.env.VITE_CHATROOM_APP_KEY as string;
-const GLOBAL_REALTIME_KEY = '__rmLiveLeancloudRealtime';
-const GLOBAL_IMCLIENT_KEY = '__rmLiveLeancloudImClient';
+/** Bumped so cached Realtime is recreated with typed-messages plugin. */
+const GLOBAL_REALTIME_KEY = '__rmLiveLeancloudRealtime_v2';
+const GLOBAL_IMCLIENT_KEY = '__rmLiveLeancloudImClient_v2';
+
+const ENGAGEMENT_PLACEHOLDER_URL =
+  (import.meta.env.VITE_ENGAGEMENT_IMAGE_URL as string | undefined) ||
+  'https://cdn.jsdelivr.net/gh/mathiasbynens/small/pixel.gif';
 
 let sharedRealtime: any = null;
 let sharedRealtimeInitPromise: Promise<any> | null = null;
 let sharedImClient: any = null;
 let sharedImClientInitPromise: Promise<any> | null = null;
+
+/** Set after typed-messages plugin is applied; used for instanceof and ImageMessage.TYPE. */
+let lcImageMessageCtor: any = null;
+
+let lcTypedBundlePromise: Promise<{ TypedMessagesPlugin: any; ImageMessage: any }> | null = null;
 
 const runtimeGlobal = globalThis as typeof globalThis & Record<string, unknown>;
 
@@ -22,6 +45,38 @@ if (runtimeGlobal[GLOBAL_IMCLIENT_KEY]) {
   sharedImClient = runtimeGlobal[GLOBAL_IMCLIENT_KEY];
 }
 
+async function loadTypedMessagesBundle(): Promise<{ TypedMessagesPlugin: any; ImageMessage: any }> {
+  if (!lcTypedBundlePromise) {
+    lcTypedBundlePromise = (async () => {
+      const AV = (await import('leancloud-storage')).default;
+      const LC = await import('leancloud-realtime');
+      const initTypedMessages = (await import('leancloud-realtime-plugin-typed-messages')).default as (
+        av: typeof AV,
+        im: typeof LC,
+      ) => { TypedMessagesPlugin: any; ImageMessage: any };
+      return initTypedMessages(AV, LC);
+    })();
+  }
+  return lcTypedBundlePromise;
+}
+
+let engagementFileId: string | null = null;
+
+async function getOrCreateEngagementFile(): Promise<any> {
+  const AV = (await import('leancloud-storage')).default;
+  await getSharedRealtime();
+  if (engagementFileId) {
+    return AV.File.createWithoutData(engagementFileId);
+  }
+  const file = AV.File.withURL('rmlive-engagement', ENGAGEMENT_PLACEHOLDER_URL);
+  await file.save();
+  engagementFileId = file.id ?? null;
+  if (!engagementFileId) {
+    throw new Error('LeanCloud File.save did not return id');
+  }
+  return file;
+}
+
 async function getSharedRealtime(): Promise<any> {
   if (sharedRealtime) {
     return sharedRealtime;
@@ -29,15 +84,31 @@ async function getSharedRealtime(): Promise<any> {
 
   if (!sharedRealtimeInitPromise) {
     sharedRealtimeInitPromise = (async () => {
-      const { Realtime } = await import('leancloud-realtime');
-      const instance = new Realtime({
+      const { TypedMessagesPlugin, ImageMessage } = await loadTypedMessagesBundle();
+      lcImageMessageCtor = ImageMessage;
+
+      const LC = await import('leancloud-realtime');
+      const AV = (await import('leancloud-storage')).default;
+
+      const instance = new LC.Realtime({
         appId: APP_ID,
         appKey: APP_KEY,
         server: {
           RTMRouter: 'https://router-g0-push.leancloud.cn',
           api: 'https://api.leancloud.cn',
         },
+        plugins: [TypedMessagesPlugin],
       });
+
+      AV.init({
+        appId: APP_ID,
+        appKey: APP_KEY,
+        serverURLs: {
+          api: 'https://api.leancloud.cn',
+        },
+        realtime: instance,
+      });
+
       sharedRealtime = instance;
       runtimeGlobal[GLOBAL_REALTIME_KEY] = instance;
       return instance;
@@ -95,13 +166,22 @@ function normalizeDanmuStyleFromAttrs(attrs: Record<string, unknown>): Pick<Danm
   return out;
 }
 
-interface DanmuServiceHandlers {
+/** Narrow surface used by match engagement (avoids class private-field assignability issues). */
+export interface IMatchEngagementGateway {
+  fetchEngagementHistory(limit?: number): Promise<EngagementInbound[]>;
+  sendSupportTeam(matchKey: string, collegeName: string): Promise<void>;
+  sendMatchReaction(matchKey: string, reactionId: string): Promise<void>;
+}
+
+export interface DanmuServiceHandlers {
   onMessage?: (msg: DanmuMessage) => void;
   onError?: (error: unknown) => void;
   includeHistory?: boolean;
+  onEngagementMessage?: (msg: EngagementInbound) => void;
+  onEngagementHydrate?: (msgs: EngagementInbound[]) => void;
 }
 
-export class DanmuService {
+export class DanmuService implements IMatchEngagementGateway {
   private handlers: DanmuServiceHandlers = {};
   private seenIds = new Set<string>();
   private conversationInstance: any = null;
@@ -122,8 +202,7 @@ export class DanmuService {
     try {
       await this.disconnect();
 
-      const { Realtime, TextMessage } = await import('leancloud-realtime');
-      void Realtime;
+      const { TextMessage } = await import('leancloud-realtime');
 
       const imClient = await getSharedImClient();
 
@@ -180,7 +259,28 @@ export class DanmuService {
     this.handlers.onMessage?.(danmu);
   }
 
+  private tryConsumeEngagementImage(message: any, source: 'realtime' | 'history'): boolean {
+    if (!lcImageMessageCtor || !(message instanceof lcImageMessageCtor)) {
+      return false;
+    }
+    const attrs = (message.getAttributes?.() || {}) as Record<string, unknown>;
+    const mid = String(message.id ?? message.messageId ?? this.toDanmuId(message, source));
+    const ts = this.toTimestamp((message as any).timestamp);
+    const parsed = parseEngagementFromAttributes(attrs, mid, ts);
+    if (!parsed) {
+      return false;
+    }
+    if (source === 'realtime') {
+      this.handlers.onEngagementMessage?.(parsed);
+    }
+    return true;
+  }
+
   private handleRawMessage(message: any, TextMessage: any, source: 'realtime' | 'history'): void {
+    if (this.tryConsumeEngagementImage(message, source)) {
+      return;
+    }
+
     if (message instanceof TextMessage) {
       const attrs = message.getAttributes?.() || {};
       const attrsRec = attrs as Record<string, unknown>;
@@ -251,6 +351,38 @@ export class DanmuService {
     return Date.now();
   }
 
+  /** Pull recent image messages and return engagement payloads (client-side filter). */
+  async fetchEngagementHistory(limit = 200): Promise<EngagementInbound[]> {
+    if (!this.conversationInstance?.queryMessages || !lcImageMessageCtor) {
+      return [];
+    }
+    try {
+      const list = await this.conversationInstance.queryMessages({
+        limit,
+        type: lcImageMessageCtor.TYPE,
+      });
+      if (!Array.isArray(list)) {
+        return [];
+      }
+      const out: EngagementInbound[] = [];
+      for (const m of list) {
+        if (!(m instanceof lcImageMessageCtor)) {
+          continue;
+        }
+        const attrs = (m.getAttributes?.() || {}) as Record<string, unknown>;
+        const mid = String(m.id ?? '');
+        const parsed = parseEngagementFromAttributes(attrs, mid, this.toTimestamp((m as any).timestamp));
+        if (parsed) {
+          out.push(parsed);
+        }
+      }
+      return out;
+    } catch (error) {
+      console.warn('[Danmu] fetchEngagementHistory failed:', error);
+      return [];
+    }
+  }
+
   private async loadHistoryFromConversation(conversation: any): Promise<void> {
     if (!conversation?.queryMessages) {
       return;
@@ -265,6 +397,11 @@ export class DanmuService {
           .slice()
           .reverse()
           .forEach((message: any) => this.handleRawMessage(message, TextMessage, 'history'));
+      }
+
+      const engagement = await this.fetchEngagementHistory(200);
+      if (engagement.length > 0) {
+        this.handlers.onEngagementHydrate?.(engagement);
       }
     } catch (error) {
       console.warn('[Danmu] Failed to fetch LeanCloud history:', error);
@@ -424,6 +561,39 @@ export class DanmuService {
       this.handlers.onError?.(error);
       throw error;
     }
+  }
+
+  async sendSupportTeam(matchKey: string, collegeName: string): Promise<void> {
+    if (!this.conversationInstance) {
+      throw new Error('Danmu service not connected');
+    }
+    if (!lcImageMessageCtor) {
+      throw new Error('ImageMessage not ready');
+    }
+    const file = await getOrCreateEngagementFile();
+    const message = new lcImageMessageCtor(file);
+    message.setAttributes({
+      [RMLIVE_MSG_TYPE]: MSG_TYPE_SUPPORT_TEAM,
+      [RMLIVE_MSG_FOR_TEAM]: encodeTeamTarget(matchKey, collegeName),
+    });
+    await this.conversationInstance.send(message);
+  }
+
+  async sendMatchReaction(matchKey: string, reactionId: string): Promise<void> {
+    if (!this.conversationInstance) {
+      throw new Error('Danmu service not connected');
+    }
+    if (!lcImageMessageCtor) {
+      throw new Error('ImageMessage not ready');
+    }
+    const file = await getOrCreateEngagementFile();
+    const message = new lcImageMessageCtor(file);
+    message.setAttributes({
+      [RMLIVE_MSG_TYPE]: MSG_TYPE_MATCH_REACTION,
+      [RMLIVE_MSG_FOR_MATCH]: matchKey,
+      [RMLIVE_REACTION_ID]: reactionId,
+    });
+    await this.conversationInstance.send(message);
   }
 
   async disconnect(): Promise<void> {

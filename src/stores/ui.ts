@@ -3,7 +3,6 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
 const THEME_KEY = 'rm-live-theme';
-const NEXT_PANEL_KEY = 'rm-next-panel-expanded';
 const MOBILE_BREAKPOINT = 768;
 
 export interface SchedulePanelIntent {
@@ -16,7 +15,6 @@ export interface SchedulePanelIntent {
 export const useUiStore = defineStore('ui', () => {
   const isDark = useLocalStorage<boolean>(THEME_KEY, true);
   const isMobile = ref(false);
-  const nextMatchExpanded = useLocalStorage<boolean>(NEXT_PANEL_KEY, false);
 
   const schedulePanelIntent = ref<SchedulePanelIntent | null>(null);
   /** Skip one run of SchedulePanel auto-tab switching after programmatic navigation. */
@@ -65,10 +63,6 @@ export const useUiStore = defineStore('ui', () => {
     updateViewport();
   }
 
-  function setNextMatchExpanded(expanded: boolean) {
-    nextMatchExpanded.value = expanded;
-  }
-
   function initializeUi() {
     applyTheme();
 
@@ -83,13 +77,11 @@ export const useUiStore = defineStore('ui', () => {
   return {
     isDark,
     isMobile,
-    nextMatchExpanded,
     schedulePanelIntent,
     requestSchedulePanelFocus,
     clearSchedulePanelIntent,
     consumeSuppressScheduleAutoTabOnce,
     setDarkMode,
-    setNextMatchExpanded,
     initializeUi,
     teardownUi,
   };
