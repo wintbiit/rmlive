@@ -2,11 +2,11 @@
 import { loadReactionCatalog, type ReactionCatalogItem } from '@/config/loadReactionCatalog';
 import { useMatchEngagementStore } from '@/stores/matchEngagement';
 import { useRmDataStore } from '@/stores/rmData';
-import Fieldset from 'primevue/fieldset';
-import MeterGroup from 'primevue/metergroup';
-import type { MeterItem } from 'primevue/metergroup';
 import { useThrottleFn } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
+import Fieldset from 'primevue/fieldset';
+import type { MeterItem } from 'primevue/metergroup';
+import MeterGroup from 'primevue/metergroup';
 import { computed, onMounted, ref } from 'vue';
 
 type ReactionMeterItem = MeterItem & { reactionId: string; count: number };
@@ -84,13 +84,7 @@ const bumpReaction = useThrottleFn((id: string) => {
     :class="{ 'reaction-fieldset--hydrating': hydrateLoading }"
   >
     <div v-if="catalog.length" class="preset-row">
-      <button
-        v-for="p in catalog"
-        :key="p.id"
-        type="button"
-        class="preset-hit"
-        @click="bumpReaction(p.id)"
-      >
+      <button v-for="p in catalog" :key="p.id" type="button" class="preset-hit" @click="bumpReaction(p.id)">
         <img class="preset-img" :src="p.url" :alt="p.name" width="28" height="28" />
         <span class="preset-name">{{ p.name }}</span>
       </button>
@@ -110,15 +104,9 @@ const bumpReaction = useThrottleFn((id: string) => {
               @click="bumpReaction(asReactionMeter(raw).reactionId)"
               @keydown.enter.prevent="bumpReaction(asReactionMeter(raw).reactionId)"
             >
-              <span
-                class="reaction-label-marker"
-                :style="{ backgroundColor: raw.color }"
-                aria-hidden="true"
-              />
+              <span class="reaction-label-marker" :style="{ backgroundColor: raw.color }" aria-hidden="true" />
               <span class="reaction-label-text">
-                {{ asReactionMeter(raw).label }} ({{ asReactionMeter(raw).count }}) ({{
-                  raw.value
-                }}%)
+                {{ asReactionMeter(raw).label }} ({{ asReactionMeter(raw).count }}) ({{ raw.value }}%)
               </span>
             </li>
           </ol>
@@ -156,7 +144,9 @@ const bumpReaction = useThrottleFn((id: string) => {
   cursor: pointer;
   color: inherit;
   font: inherit;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .preset-hit:hover {

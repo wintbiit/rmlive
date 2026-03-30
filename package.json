@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:mock": "vite --mode mock",
+    "dev:mock": "cross-env VITE_RM_MOCK=1 vite --mode mock",
     "build": "vue-tsc -b && vite build",
     "build:iframe": "cross-env VITE_BUILD_IFRAME=true vite build --mode iframe",
     "build:all": "pnpm build && pnpm build:iframe",
