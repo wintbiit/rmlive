@@ -3,6 +3,9 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
 const THEME_KEY = 'rm-live-theme';
+const PK_ENABLED_KEY = 'rm-live-pk-enabled';
+const REACTION_ENABLED_KEY = 'rm-live-reaction-enabled';
+const DANMU_ENABLED_KEY = 'rm-live-danmu-enabled';
 const MOBILE_BREAKPOINT = 768;
 
 export interface SchedulePanelIntent {
@@ -14,6 +17,9 @@ export interface SchedulePanelIntent {
 
 export const useUiStore = defineStore('ui', () => {
   const isDark = useLocalStorage<boolean>(THEME_KEY, true);
+  const pkEnabled = useLocalStorage<boolean>(PK_ENABLED_KEY, true);
+  const reactionEnabled = useLocalStorage<boolean>(REACTION_ENABLED_KEY, true);
+  const danmuEnabled = useLocalStorage<boolean>(DANMU_ENABLED_KEY, true);
   const isMobile = ref(false);
 
   const schedulePanelIntent = ref<SchedulePanelIntent | null>(null);
@@ -55,6 +61,10 @@ export const useUiStore = defineStore('ui', () => {
     applyTheme();
   }
 
+  function setDanmuEnabled(enabled: boolean) {
+    danmuEnabled.value = enabled;
+  }
+
   function updateViewport() {
     isMobile.value = window.innerWidth <= MOBILE_BREAKPOINT;
   }
@@ -76,12 +86,16 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     isDark,
+    pkEnabled,
+    reactionEnabled,
+    danmuEnabled,
     isMobile,
     schedulePanelIntent,
     requestSchedulePanelFocus,
     clearSchedulePanelIntent,
     consumeSuppressScheduleAutoTabOnce,
     setDarkMode,
+    setDanmuEnabled,
     initializeUi,
     teardownUi,
   };

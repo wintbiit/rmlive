@@ -4,14 +4,14 @@ import 'primeicons/primeicons.css';
 import PrimeVue from 'primevue/config';
 import ToastService from 'primevue/toastservice';
 import Tooltip from 'primevue/tooltip';
-import { createApp } from 'vue';
 import { registerSW } from 'virtual:pwa-register';
+import { createApp } from 'vue';
 import App from './App.vue';
 
 registerSW({ immediate: true });
 
-import './styles/primevue-theme.css';
 import './styles/mobile-input.css';
+import './styles/primevue-theme.css';
 const app = createApp(App);
 app.use(createPinia());
 

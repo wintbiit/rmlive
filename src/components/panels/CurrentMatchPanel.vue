@@ -7,7 +7,7 @@ import { storeToRefs } from 'pinia';
 import Card from 'primevue/card';
 import { computed, watch } from 'vue';
 import ScheduleItem from '../common/ScheduleItem.vue';
-import MatchFirepowerBar from './MatchFirepowerBar.vue';
+import MatchSupportButton from './MatchSupportButton.vue';
 
 const emit = defineEmits<{
   teamSelect: [payload: TeamSelectPayload];
@@ -18,6 +18,7 @@ const dataStore = useRmDataStore();
 const matchEngagement = useMatchEngagementStore();
 
 const { runningMatchForSelectedZone } = storeToRefs(dataStore);
+const { pkEnabled } = storeToRefs(uiStore);
 
 const runningLiving = computed(() => {
   const m = runningMatchForSelectedZone.value;
@@ -51,8 +52,11 @@ function onSelectTeam(payload: TeamSelectPayload) {
           :team-group-map="dataStore.teamGroupMap"
           @team-select="onSelectTeam"
         >
-          <template v-if="runningLiving" #belowTeams>
-            <MatchFirepowerBar />
+          <template v-if="runningLiving && pkEnabled" #redTeamAction>
+            <MatchSupportButton side="red" />
+          </template>
+          <template v-if="runningLiving && pkEnabled" #blueTeamAction>
+            <MatchSupportButton side="blue" />
           </template>
         </ScheduleItem>
       </template>
@@ -63,8 +67,11 @@ function onSelectTeam(payload: TeamSelectPayload) {
       :team-group-map="dataStore.teamGroupMap"
       @team-select="onSelectTeam"
     >
-      <template v-if="runningLiving" #belowTeams>
-        <MatchFirepowerBar />
+      <template v-if="runningLiving && pkEnabled" #redTeamAction>
+        <MatchSupportButton side="red" />
+      </template>
+      <template v-if="runningLiving && pkEnabled" #blueTeamAction>
+        <MatchSupportButton side="blue" />
       </template>
     </ScheduleItem>
   </div>

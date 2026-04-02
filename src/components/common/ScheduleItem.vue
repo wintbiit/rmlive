@@ -155,7 +155,11 @@ const slug = computed(() => {
               :zone-name="item.zoneName"
               logo-position="right"
               @select="onSelectTeam"
-            />
+            >
+              <template v-if="$slots.redTeamAction" #headPrefix>
+                <slot name="redTeamAction" />
+              </template>
+            </TeamInfoCard>
           </div>
 
           <div class="center-column">
@@ -187,7 +191,11 @@ const slug = computed(() => {
               :zone-id="item.zoneId"
               :zone-name="item.zoneName"
               @select="onSelectTeam"
-            />
+            >
+              <template v-if="$slots.blueTeamAction" #headExtra>
+                <slot name="blueTeamAction" />
+              </template>
+            </TeamInfoCard>
           </div>
         </div>
 
@@ -262,7 +270,7 @@ const slug = computed(() => {
   align-items: stretch;
   gap: 0.3rem;
   margin-top: 0.3rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .team-column {

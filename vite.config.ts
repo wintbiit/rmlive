@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
 import { visualizer } from 'rollup-plugin-visualizer';
@@ -46,6 +47,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: process.env.VITE_BASE ?? '/',
     plugins: [
+      tailwindcss(),
       vue(),
       ...mockDevServerPlugin({
         enabled: useRmLiveJsonMock,

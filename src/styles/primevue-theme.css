@@ -1,6 +1,4 @@
-/* PrimeVue Theme & App Global Variables */
-
-/* 集中所有颜色、主题相关 CSS 变量，避免 scoped :global() 污染 */
+@import "tailwindcss";
 
 :root {
   /* Scoreboard Theme Colors (from MatchBlock.vue) */

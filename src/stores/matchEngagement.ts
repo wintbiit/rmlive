@@ -9,6 +9,15 @@ import type { MatchView } from '@/utils/matchView';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
 
+type SupportSide = 'red' | 'blue';
+
+interface SupportFxEvent {
+  id: string;
+  side: SupportSide;
+  messageId: string;
+  createdAt: number;
+}
+
 function normSchool(s: string): string {
   return String(s ?? '').trim();
 }
@@ -22,8 +31,10 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
   const reactions = ref<Record<string, number>>({});
   const seenEngagementIds = ref<Set<string>>(new Set());
   const hydrateLoading = ref(false);
+  const supportFxEvents = ref<SupportFxEvent[]>([]);
 
   const danmuServiceRef = shallowRef<IMatchEngagementGateway | null>(null);
+  const supportFxTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const redPercent = computed(() => {
     const t = redSupport.value + blueSupport.value;
@@ -41,11 +52,20 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     return 100 - redPercent.value;
   });
 
+  function clearSupportFx() {
+    for (const timer of supportFxTimers.values()) {
+      clearTimeout(timer);
+    }
+    supportFxTimers.clear();
+    supportFxEvents.value = [];
+  }
+
   function resetCounts() {
     redSupport.value = 0;
     blueSupport.value = 0;
     reactions.value = {};
     seenEngagementIds.value = new Set();
+    clearSupportFx();
   }
 
   function registerDanmuService(service: IMatchEngagementGateway | null) {
@@ -69,12 +89,41 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     }
   }
 
-  function applyDelta(p: EngagementInbound) {
-    if (p.kind === MSG_TYPE_SUPPORT_TEAM && p.collegeName) {
-      const c = normSchool(p.collegeName);
-      if (c && c === normSchool(redCollege.value)) {
+  function getSupportSideByCollege(collegeName: string | null | undefined): SupportSide | null {
+    const c = normSchool(collegeName);
+    if (c && c === normSchool(redCollege.value)) {
+      return 'red';
+    }
+    if (c && c === normSchool(blueCollege.value)) {
+      return 'blue';
+    }
+    return null;
+  }
+
+  function removeSupportFx(id: string) {
+    const timer = supportFxTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      supportFxTimers.delete(id);
+    }
+    supportFxEvents.value = supportFxEvents.value.filter((event) => event.id !== id);
+  }
+
+  function enqueueSupportFx(side: SupportSide, messageId: string) {
+    const id = `${messageId}:${Date.now()}`;
+    supportFxEvents.value = [...supportFxEvents.value, { id, side, messageId, createdAt: Date.now() }];
+    const timer = setTimeout(() => {
+      removeSupportFx(id);
+    }, 700);
+    supportFxTimers.set(id, timer);
+  }
+
+  function applyHydratedDelta(p: EngagementInbound) {
+    if (p.kind === MSG_TYPE_SUPPORT_TEAM) {
+      const side = getSupportSideByCollege(p.collegeName);
+      if (side === 'red') {
         redSupport.value += 1;
-      } else if (c && c === normSchool(blueCollege.value)) {
+      } else if (side === 'blue') {
         blueSupport.value += 1;
       }
       return;
@@ -93,7 +142,12 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
       return;
     }
     seenEngagementIds.value = new Set(seenEngagementIds.value).add(p.messageId);
-    applyDelta(p);
+    if (p.kind === MSG_TYPE_SUPPORT_TEAM) {
+      const side = getSupportSideByCollege(p.collegeName);
+      if (side) {
+        enqueueSupportFx(side, p.messageId);
+      }
+    }
   }
 
   function hydrateFromHistory(items: EngagementInbound[]) {
@@ -112,7 +166,7 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
         continue;
       }
       nextSeen.add(p.messageId);
-      applyDelta(p);
+      applyHydratedDelta(p);
     }
     seenEngagementIds.value = nextSeen;
   }
@@ -162,6 +216,8 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     if (!svc || !mk || !reactionId) {
       return;
     }
+    // first add locally for better UX, the server will return the accurate count and fix any discrepancy
+    reactions.value = { ...reactions.value, [reactionId]: (reactions.value[reactionId] ?? 0) + 1 };
     try {
       await svc.sendMatchReaction(mk, reactionId);
       await refreshHydrate();
@@ -179,12 +235,14 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     reactions,
     redPercent,
     bluePercent,
+    supportFxEvents,
     hydrateLoading,
     registerDanmuService,
     applyRunningMatch,
     ingestLive,
     hydrateFromHistory,
     refreshHydrate,
+    enqueueSupportFx,
     sendSupport,
     sendReaction,
   };

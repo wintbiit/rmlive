@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { DanmuService } from '@/danmu/DanmuService';
+import { useRmDataStore } from '@/stores/rmData';
 import { useDanmuFilterStore } from '@/stores/danmuFilter';
 import { useMatchEngagementStore } from '@/stores/matchEngagement';
 import { useUiStore } from '@/stores/ui';
 import { isIFrame, useUserInfoStore } from '@/stores/userInfo';
-import { formatStructuredName } from '@/utils/danmuView';
+import { formatStructuredName, resolveDisplaySchool } from '@/utils/danmuView';
 import Artplayer, { Option } from 'artplayer';
 import artplayerPluginChromecast from 'artplayer-plugin-chromecast';
 import artplayerPluginDanmuku, { type Danmu } from 'artplayer-plugin-danmuku';
@@ -13,6 +14,7 @@ import Button from 'primevue/button';
 import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';
 import { useToast } from 'primevue/usetoast';
+import { storeToRefs } from 'pinia';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { DanmuAttributes, DanmuMessage } from '../../types/api';
 import DanmuFilterDialog from '../dialogs/DanmuFilterDialog.vue';
@@ -36,6 +38,8 @@ const props = defineProps<Props>();
 const toast = useToast();
 const hasShownAutoplayNotice = ref(false);
 const filterDialogVisible = ref(false);
+const uiStore = useUiStore();
+const danmuEnabledAtLoad = Boolean(uiStore.danmuEnabled);
 
 const emit = defineEmits<{
   retry: [];
@@ -57,6 +61,8 @@ let connectingService: DanmuService | null = null;
 const danmuFilterStore = useDanmuFilterStore();
 const matchEngagementStore = useMatchEngagementStore();
 const userInfoStore = useUserInfoStore();
+const rmDataStore = useRmDataStore();
+const { runningMatchForSelectedZone } = storeToRefs(rmDataStore);
 const activeFilterCount = computed(() => danmuFilterStore.activeRuleCount);
 const filterActive = computed(() => danmuFilterStore.rules.enabled && activeFilterCount.value > 0);
 const filterSummary = computed(() => {
@@ -70,6 +76,59 @@ const filterSummary = computed(() => {
 
   return `关键词 ${danmuFilterStore.rules.keywords.length} / 学校 ${danmuFilterStore.rules.schools.length} / 用户 ${danmuFilterStore.rules.users.length}`;
 });
+
+type TrackDanmuStyle = Record<string, string>;
+
+const RED_SIDE_DANMU_STYLE: TrackDanmuStyle = {
+  fontWeight: '700',
+  padding: '0 8px',
+  borderRadius: '6px',
+  border: '1px solid rgba(251, 113, 133, 0.6)',
+  backgroundColor: 'rgba(190, 24, 93, 0.24)',
+  textShadow: '0 0 6px rgba(251, 113, 133, 0.45)',
+};
+
+const BLUE_SIDE_DANMU_STYLE: TrackDanmuStyle = {
+  fontWeight: '700',
+  padding: '0 8px',
+  borderRadius: '6px',
+  border: '1px solid rgba(56, 189, 248, 0.6)',
+  backgroundColor: 'rgba(3, 105, 161, 0.24)',
+  textShadow: '0 0 6px rgba(56, 189, 248, 0.45)',
+};
+
+function normalizeSchoolToken(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized || normalized === '-') {
+    return '';
+  }
+  return normalized;
+}
+
+function resolveSpecialDanmuStyleBySchool(message: DanmuMessage): TrackDanmuStyle | undefined {
+  const senderSchool = normalizeSchoolToken(resolveDisplaySchool(message));
+  if (!senderSchool) {
+    return undefined;
+  }
+
+  const currentMatch = runningMatchForSelectedZone.value;
+  if (!currentMatch) {
+    return undefined;
+  }
+
+  const redSchool = normalizeSchoolToken(currentMatch.redTeam.collegeName);
+  const blueSchool = normalizeSchoolToken(currentMatch.blueTeam.collegeName);
+
+  if (senderSchool === redSchool) {
+    return RED_SIDE_DANMU_STYLE;
+  }
+
+  if (senderSchool === blueSchool) {
+    return BLUE_SIDE_DANMU_STYLE;
+  }
+
+  return undefined;
+}
 
 async function sendDanmuByRealtime(d: Danmu): Promise<boolean> {
   const content = String(d?.text ?? '').trim();
@@ -177,12 +236,14 @@ function pushDanmuToPlayer(msg: DanmuMessage) {
     return;
   }
 
+  const specialStyle = resolveSpecialDanmuStyleBySchool(msg);
   const payload = {
     text: msg.text,
     color: msg.color ?? '#FFFFFF',
     mode: msg.mode ?? 0,
     time: 0,
     border: msg.nickname === userInfoStore.userInfo?.nickname,
+    ...(specialStyle ? { style: specialStyle } : {}),
   };
 
   if (playerReady && danmukuPlugin?.emit) {
@@ -326,8 +387,6 @@ async function initDanmu(roomId: string) {
   }
 }
 
-const uiStore = useUiStore();
-
 function buildQualityItems() {
   return (props.qualityOptions ?? [])
     .filter((item) => item.src && item.src.startsWith('http'))
@@ -364,20 +423,23 @@ async function mountPlayer(url: string) {
 
   const qualityItems = buildQualityItems();
 
-  const plugins: any[] = [
-    artplayerPluginDanmuku({
-      danmuku: [],
-      speed: 5,
-      margin: [10, '25%'],
-      opacity: 1,
-      fontSize: 22,
-      antiOverlap: true,
-      synchronousPlayback: false,
-      emitter: isIFrame,
-      filter: danmuFilterStore.matchTrackDanmu,
-      beforeEmit: sendDanmuByRealtime,
-    }),
-  ];
+  const plugins: any[] = [];
+  if (danmuEnabledAtLoad) {
+    plugins.push(
+      artplayerPluginDanmuku({
+        danmuku: [],
+        speed: 5,
+        margin: [10, '25%'],
+        opacity: 1,
+        fontSize: 22,
+        antiOverlap: true,
+        synchronousPlayback: false,
+        emitter: isIFrame,
+        filter: danmuFilterStore.matchTrackDanmu,
+        beforeEmit: sendDanmuByRealtime,
+      }),
+    );
+  }
 
   // PC端启用 Chromecast
   if (!uiStore.isMobile) {
@@ -412,20 +474,22 @@ async function mountPlayer(url: string) {
     playsInline: true,
     autoOrientation: true,
     lock: true,
-    settings: [
-      {
-        html: filterActive.value ? `过滤 ${activeFilterCount.value}` : '过滤',
-        tooltip: filterSummary.value,
-        name: 'danmu-filter',
-        icon: '',
-        style: {
-          color: filterActive.value ? '#ffd04b' : '#fff',
-        },
-        onClick() {
-          filterDialogVisible.value = true;
-        },
-      },
-    ],
+    settings: danmuEnabledAtLoad
+      ? [
+          {
+            html: filterActive.value ? `过滤 ${activeFilterCount.value}` : '过滤',
+            tooltip: filterSummary.value,
+            name: 'danmu-filter',
+            icon: '',
+            style: {
+              color: filterActive.value ? '#ffd04b' : '#fff',
+            },
+            onClick() {
+              filterDialogVisible.value = true;
+            },
+          },
+        ]
+      : [],
     customType: {
       m3u8(video: HTMLVideoElement, m3u8Url: string) {
         destroyAttachedHls();
@@ -452,12 +516,12 @@ async function mountPlayer(url: string) {
   };
 
   player = new Artplayer(playerOptions);
-  danmukuPlugin = (player as any).plugins?.artplayerPluginDanmuku;
+  danmukuPlugin = danmuEnabledAtLoad ? (player as any).plugins?.artplayerPluginDanmuku : null;
 
   // Some browsers still require an explicit play attempt after source mount.
   player.on('ready', () => {
     playerReady = true;
-    danmukuPlugin = (player as any).plugins?.artplayerPluginDanmuku;
+    danmukuPlugin = danmuEnabledAtLoad ? (player as any).plugins?.artplayerPluginDanmuku : null;
     updateQualityControl();
     flushPendingDanmu();
     try {
@@ -499,6 +563,12 @@ async function applyStreamUrl(url: string) {
 watch(
   () => props.chatRoomId,
   (roomId) => {
+    if (!danmuEnabledAtLoad) {
+      currentRoomId = null;
+      roomSwitchToken += 1;
+      void destroyDanmu();
+      return;
+    }
     pendingDanmuQueue.length = 0;
     if (roomId) {
       void initDanmu(roomId);
@@ -571,7 +641,7 @@ onBeforeUnmount(async () => {
 
     <div ref="container" class="player-container" />
 
-    <DanmuFilterDialog v-model:visible="filterDialogVisible" />
+    <DanmuFilterDialog v-if="danmuEnabledAtLoad" v-model:visible="filterDialogVisible" />
   </div>
 </template>
 

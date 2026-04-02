@@ -66,7 +66,13 @@ function goSchedule(tab: 'schedule' | 'result') {
 </script>
 
 <template>
-  <Dialog :visible="visible" modal :style="{ width: 'min(1100px, 96vw)' }" @update:visible="onVisibleChange">
+  <Dialog
+    :visible="visible"
+    modal
+    dismissable-mask
+    :style="{ width: 'min(1100px, 96vw)' }"
+    @update:visible="onVisibleChange"
+  >
     <template #header>
       <div class="ti-header">
         <span class="ti-title">{{ headerTitle }}</span>

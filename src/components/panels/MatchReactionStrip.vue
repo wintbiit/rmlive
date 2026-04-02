@@ -1,215 +1,146 @@
 <script setup lang="ts">
-import { loadReactionCatalog, type ReactionCatalogItem } from '@/config/loadReactionCatalog';
+import reactionCatalog from '@/assets/reactions.json';
 import { useMatchEngagementStore } from '@/stores/matchEngagement';
-import { useRmDataStore } from '@/stores/rmData';
 import { useThrottleFn } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
-import Fieldset from 'primevue/fieldset';
-import type { MeterItem } from 'primevue/metergroup';
-import MeterGroup from 'primevue/metergroup';
-import { computed, onMounted, ref } from 'vue';
+import Chip from 'primevue/chip';
+import { computed, onBeforeUnmount, ref } from 'vue';
 
-type ReactionMeterItem = MeterItem & { reactionId: string; count: number };
-
-const rm = useRmDataStore();
 const engagement = useMatchEngagementStore();
-const { runningMatchForSelectedZone } = storeToRefs(rm);
 const { reactions, hydrateLoading } = storeToRefs(engagement);
 
-const catalog = ref<ReactionCatalogItem[]>([]);
-
-const visible = computed(() => {
-  const m = runningMatchForSelectedZone.value;
-  if (!m) {
-    return false;
-  }
-  const u = String(m.statusRaw ?? '').toUpperCase();
-  return ['STARTED', 'PLAYING'].includes(u);
-});
-
-onMounted(() => {
-  void loadReactionCatalog().then((list) => {
-    catalog.value = list;
-  });
-});
-
-function labelForReactionId(id: string): string {
-  const c = catalog.value.find((x) => x.id === id);
-  return c?.name ?? id;
+interface ReactionItem {
+  id: string;
+  url: string;
+  count: number;
 }
 
-function asReactionMeter(item: MeterItem): ReactionMeterItem {
-  return item as ReactionMeterItem;
+interface ReactionBurst {
+  id: string;
+  url: string;
+  nonce: number;
 }
-
-const reactionPalette = ['#f43f5e', '#0ea5e9', '#a78bfa', '#f59e0b', '#34d399', '#f472b6'];
-
-const reactionMeters = computed((): ReactionMeterItem[] => {
-  const entries = Object.entries(reactions.value)
-    .filter(([, c]) => c > 0)
-    .sort((a, b) => b[1] - a[1]);
-  if (!entries.length) {
-    return [];
-  }
-  const total = entries.reduce((s, [, c]) => s + c, 0);
-  let acc = 0;
-  return entries.map(([id, count], i) => {
-    let pct = Math.round((count / total) * 100);
-    if (i === entries.length - 1) {
-      pct = Math.max(0, 100 - acc);
-    } else {
-      acc += pct;
-    }
-    return {
-      label: labelForReactionId(id),
-      value: pct,
-      color: reactionPalette[i % reactionPalette.length],
-      reactionId: id,
-      count,
-    };
-  });
-});
 
 const bumpReaction = useThrottleFn((id: string) => {
   void engagement.sendReaction(id);
 }, 120);
+
+const burst = ref<ReactionBurst | null>(null);
+const burstVisible = ref(false);
+const isBurstAnimating = ref(false);
+let burstHideTimer: ReturnType<typeof setTimeout> | null = null;
+let burstClearTimer: ReturnType<typeof setTimeout> | null = null;
+let burstUnlockTimer: ReturnType<typeof setTimeout> | null = null;
+
+function triggerVibration() {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+    return;
+  }
+  navigator.vibrate([14, 20, 22]);
+}
+
+function showReactionBurst(id: string, url: string) {
+  if (burstHideTimer) {
+    clearTimeout(burstHideTimer);
+  }
+  if (burstClearTimer) {
+    clearTimeout(burstClearTimer);
+  }
+  if (burstUnlockTimer) {
+    clearTimeout(burstUnlockTimer);
+  }
+  isBurstAnimating.value = true;
+  burst.value = { id, url, nonce: Date.now() };
+  burstVisible.value = true;
+  burstHideTimer = setTimeout(() => {
+    burstVisible.value = false;
+    burstHideTimer = null;
+  }, 420);
+  burstClearTimer = setTimeout(() => {
+    burst.value = null;
+    burstClearTimer = null;
+  }, 620);
+  burstUnlockTimer = setTimeout(() => {
+    isBurstAnimating.value = false;
+    burstUnlockTimer = null;
+  }, 620);
+}
+
+function onReactionClick(item: ReactionItem) {
+  if (isBurstAnimating.value || hydrateLoading.value) {
+    return;
+  }
+  bumpReaction(item.id);
+  showReactionBurst(item.id, item.url);
+  triggerVibration();
+}
+
+onBeforeUnmount(() => {
+  if (burstHideTimer) {
+    clearTimeout(burstHideTimer);
+  }
+  if (burstClearTimer) {
+    clearTimeout(burstClearTimer);
+  }
+  if (burstUnlockTimer) {
+    clearTimeout(burstUnlockTimer);
+  }
+});
+
+const reactionItems = computed<ReactionItem[]>(() => {
+  return reactionCatalog.map((c) => ({
+    id: c.id,
+    url: c.url,
+    count: reactions.value[c.id] ?? 0,
+  }));
+});
 </script>
 
 <template>
-  <Fieldset
-    v-if="visible"
-    legend="对局评价"
-    :toggleable="true"
-    class="reaction-fieldset"
-    :class="{ 'reaction-fieldset--hydrating': hydrateLoading }"
+  <div class="flex flex-wrap justify-center gap-1.5 sm:gap-2">
+    <Chip
+      v-for="p in reactionItems"
+      :key="p.id"
+      @click="onReactionClick(p)"
+      @keydown.enter.prevent="onReactionClick(p)"
+      @keydown.space.prevent="onReactionClick(p)"
+      :label="p.count > 0 ? String(p.count) : undefined"
+      :image="p.url"
+      :image-alt="p.id"
+      :pt="{
+        root: {
+          class:
+            'cursor-pointer shrink-0 select-none !rounded-full !px-1.5 !py-1 sm:!px-2.5 sm:!py-1.5 md:!px-3 md:!py-2 lg:!px-3.5 lg:!py-2',
+        },
+        image: {
+          class:
+            '!h-4 !w-4 !max-w-none !shrink-0 !object-contain sm:!h-5 sm:!w-5 md:!h-6 md:!w-6 lg:!h-7 lg:!w-7',
+        },
+        label: { class: '!text-[11px] sm:!text-xs md:!text-sm lg:!text-base !leading-none' },
+      }"
+      :class="[
+        'shrink-0',
+        hydrateLoading || isBurstAnimating ? 'pointer-events-none opacity-70' : '',
+      ]"
+      role="button"
+      tabindex="0"
+    />
+  </div>
+  <Transition
+    enter-active-class="transition duration-300 ease-out"
+    enter-from-class="translate-y-6 scale-50 rotate-[-12deg] opacity-0"
+    enter-to-class="-translate-y-1 scale-110 rotate-3 opacity-100"
+    leave-active-class="transition duration-200 ease-in"
+    leave-from-class="-translate-y-3 scale-100 opacity-100"
+    leave-to-class="-translate-y-8 scale-90 opacity-0"
   >
-    <div v-if="catalog.length" class="preset-row">
-      <button v-for="p in catalog" :key="p.id" type="button" class="preset-hit" @click="bumpReaction(p.id)">
-        <img class="preset-img" :src="p.url" :alt="p.name" width="28" height="28" />
-        <span class="preset-name">{{ p.name }}</span>
-      </button>
+    <div
+      v-if="burst && burstVisible"
+      :key="burst.nonce"
+      class="pointer-events-none fixed left-1/2 bottom-[24vh] z-[1400] -translate-x-1/2"
+      aria-hidden="true"
+    >
+      <img :src="burst.url" :alt="burst.id" class="h-20 w-20 object-contain drop-shadow-xl sm:h-24 sm:w-24" />
     </div>
-    <p v-else class="catalog-hint">未加载表情配置（/reactions/reactions.json）</p>
-
-    <div v-if="reactionMeters.length" class="meter-block">
-      <MeterGroup :value="reactionMeters" label-position="end">
-        <template #label="{ value: items }">
-          <ol class="reaction-label-list">
-            <li
-              v-for="(raw, idx) in items"
-              :key="asReactionMeter(raw).reactionId + String(idx)"
-              class="reaction-label-li"
-              role="button"
-              tabindex="0"
-              @click="bumpReaction(asReactionMeter(raw).reactionId)"
-              @keydown.enter.prevent="bumpReaction(asReactionMeter(raw).reactionId)"
-            >
-              <span class="reaction-label-marker" :style="{ backgroundColor: raw.color }" aria-hidden="true" />
-              <span class="reaction-label-text">
-                {{ asReactionMeter(raw).label }} ({{ asReactionMeter(raw).count }}) ({{ raw.value }}%)
-              </span>
-            </li>
-          </ol>
-        </template>
-      </MeterGroup>
-    </div>
-  </Fieldset>
+  </Transition>
 </template>
-
-<style scoped>
-.reaction-fieldset {
-  margin-top: 0.75rem;
-  transition: opacity 0.2s ease;
-}
-
-.reaction-fieldset--hydrating {
-  opacity: 0.82;
-}
-
-.preset-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.preset-hit {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--p-content-border-color, #334155);
-  border-radius: var(--p-border-radius-md, 8px);
-  background: var(--p-content-background, transparent);
-  cursor: pointer;
-  color: inherit;
-  font: inherit;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.preset-hit:hover {
-  border-color: var(--p-primary-color, #38bdf8);
-  background: color-mix(in srgb, var(--p-primary-color, #38bdf8) 12%, transparent);
-}
-
-.preset-img {
-  display: block;
-  max-height: 2rem;
-  width: auto;
-  object-fit: contain;
-}
-
-.preset-name {
-  font-size: 0.7rem;
-  opacity: 0.9;
-}
-
-.catalog-hint {
-  margin: 0 0 0.5rem;
-  font-size: 0.8rem;
-  color: var(--p-text-muted-color, #94a3b8);
-}
-
-.meter-block {
-  margin-top: 0.65rem;
-}
-
-.reaction-label-list {
-  list-style: none;
-  margin: 0.5rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.reaction-label-li {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  cursor: pointer;
-  border-radius: var(--p-border-radius-sm, 6px);
-  padding: 0.15rem 0.25rem;
-  margin: 0 -0.25rem;
-  transition: background 0.12s ease;
-}
-
-.reaction-label-li:hover,
-.reaction-label-li:focus-visible {
-  outline: none;
-  background: color-mix(in srgb, var(--p-content-border-color, #334155) 35%, transparent);
-}
-
-.reaction-label-marker {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.reaction-label-text {
-  font-size: 0.8rem;
-}
-</style>

@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^7.7.2",
+    "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.12.0",
     "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-vue": "^6.0.5",
@@ -54,6 +55,7 @@
     "stylelint": "~16.16.0",
     "stylelint-config-standard": "^37.0.0",
     "stylelint-order": "~6.0.4",
+    "tailwindcss": "^4.2.2",
     "terser": "^5.46.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.26.1",
