@@ -8,7 +8,14 @@ import { registerSW } from 'virtual:pwa-register';
 import { createApp } from 'vue';
 import App from './App.vue';
 
-registerSW({ immediate: true });
+const updateServiceWorker = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    void updateServiceWorker(true).then(() => {
+      window.location.reload();
+    });
+  },
+});
 
 import './styles/mobile-input.css';
 import './styles/primevue-theme.css';
