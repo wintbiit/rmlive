@@ -83,8 +83,8 @@ type TrackDanmuStyle = Record<string, string>;
 const RED_SIDE_DANMU_STYLE: TrackDanmuStyle = {
   fontWeight: '700',
   padding: '0 8px',
-  borderRadius: '6px',
-  border: '1px solid rgba(251, 113, 133, 0.6)',
+  // borderRadius: '6px',
+  // border: '1px solid rgba(251, 113, 133, 0.6)',
   backgroundColor: 'rgba(190, 24, 93, 0.24)',
   textShadow: '0 0 6px rgba(251, 113, 133, 0.45)',
 };
@@ -92,8 +92,8 @@ const RED_SIDE_DANMU_STYLE: TrackDanmuStyle = {
 const BLUE_SIDE_DANMU_STYLE: TrackDanmuStyle = {
   fontWeight: '700',
   padding: '0 8px',
-  borderRadius: '6px',
-  border: '1px solid rgba(56, 189, 248, 0.6)',
+  // borderRadius: '6px',
+  // border: '1px solid rgba(56, 189, 248, 0.6)',
   backgroundColor: 'rgba(3, 105, 161, 0.24)',
   textShadow: '0 0 6px rgba(56, 189, 248, 0.45)',
 };

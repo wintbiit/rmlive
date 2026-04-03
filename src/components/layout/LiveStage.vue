@@ -66,7 +66,7 @@ function onDanmuReset() {
             @danmu="onDanmu"
             @danmu-reset="onDanmuReset"
           />
-          <div v-if="hasCurrentMatch && reactionEnabled" class="mt-2">
+          <div v-if="hasCurrentMatch && reactionEnabled">
             <MatchReactionStrip />
           </div>
         </div>

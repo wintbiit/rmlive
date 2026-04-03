@@ -1,4 +1,4 @@
-import type { IMatchEngagementGateway } from '@/danmu/DanmuService';
+import { subscribeEngagementLiveMessages, type IMatchEngagementGateway } from '@/danmu/DanmuService';
 import {
   buildMatchKeyFromView,
   MSG_TYPE_MATCH_REACTION,
@@ -39,6 +39,8 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
   const supportFxTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let hydrateRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let viewerCountPollTimer: ReturnType<typeof setInterval> | null = null;
+  let engagementLiveUnsubscribe: (() => void) | null = null;
+  let engagementLiveSubscribePromise: Promise<void> | null = null;
 
   const redPercent = computed(() => {
     const t = redSupport.value + blueSupport.value;
@@ -122,6 +124,25 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     }, 5000);
   }
 
+  function ensureEngagementLiveSubscription() {
+    if (engagementLiveUnsubscribe || engagementLiveSubscribePromise) {
+      return;
+    }
+
+    engagementLiveSubscribePromise = subscribeEngagementLiveMessages((msg) => {
+      ingestLive(msg);
+    })
+      .then((unsubscribe) => {
+        engagementLiveUnsubscribe = unsubscribe;
+      })
+      .catch((error) => {
+        console.warn('[matchEngagement] subscribeEngagementLiveMessages failed', error);
+      })
+      .finally(() => {
+        engagementLiveSubscribePromise = null;
+      });
+  }
+
   function scheduleHydrateRefresh(delayMs = 1800) {
     clearHydrateRefreshTimer();
     hydrateRefreshTimer = setTimeout(() => {
@@ -146,6 +167,7 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
       redCollege.value = nextRedCollege;
       blueCollege.value = nextBlueCollege;
       resetCounts();
+      ensureEngagementLiveSubscription();
       if (danmuServiceRef.value) {
         startViewerCountPolling();
       }
@@ -153,6 +175,7 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     }
     redCollege.value = nextRedCollege;
     blueCollege.value = nextBlueCollege;
+    ensureEngagementLiveSubscription();
   }
 
   function getSupportSideByCollege(collegeName: string | null | undefined): SupportSide | null {

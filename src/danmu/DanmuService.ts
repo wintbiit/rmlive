@@ -222,6 +222,63 @@ function resolveChatRoomById(imClient: any, chatRoomId: string): Promise<any> {
 }
 
 let engagementConversationPromise: Promise<any> | null = null;
+const engagementLiveListeners = new Set<(msg: EngagementInbound) => void>();
+let engagementLiveSubscriptionReady = false;
+
+function toStableMessageId(message: any, fallbackPrefix: string): string {
+  const mid = message?.id || message?.messageId || message?.timestamp;
+  if (mid) {
+    return String(mid);
+  }
+  return `${fallbackPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function emitEngagementLiveMessage(message: any): void {
+  if (!lcImageMessageCtor || !(message instanceof lcImageMessageCtor)) {
+    return;
+  }
+
+  const attrs = (message.getAttributes?.() || {}) as Record<string, unknown>;
+  const parsed = parseEngagementFromAttributes(attrs, toStableMessageId(message, 'engagement'), Date.now());
+  if (!parsed) {
+    return;
+  }
+
+  for (const listener of engagementLiveListeners) {
+    listener(parsed);
+  }
+}
+
+async function ensureEngagementLiveSubscription(): Promise<void> {
+  if (engagementLiveSubscriptionReady) {
+    return;
+  }
+
+  const conversation = await getEngagementConversation();
+  const { Event } = await import('leancloud-realtime');
+
+  const messageHandler = (message: any) => {
+    emitEngagementLiveMessage(message);
+  };
+
+  if (Event?.MESSAGE && typeof conversation.on === 'function') {
+    conversation.on(String(Event.MESSAGE), messageHandler);
+  }
+  if (typeof conversation.on === 'function') {
+    conversation.on('message', messageHandler);
+  }
+
+  engagementLiveSubscriptionReady = true;
+}
+
+export async function subscribeEngagementLiveMessages(listener: (msg: EngagementInbound) => void): Promise<() => void> {
+  engagementLiveListeners.add(listener);
+  await ensureEngagementLiveSubscription();
+
+  return () => {
+    engagementLiveListeners.delete(listener);
+  };
+}
 
 async function getEngagementConversation(): Promise<any> {
   if (!ENGAGEMENT_CHATROOM_ID || !ENGAGEMENT_CHATROOM_ID.trim()) {
@@ -721,7 +778,6 @@ export class DanmuService implements IMatchEngagementGateway {
     if (!lcImageMessageCtor) {
       throw new Error('ImageMessage not ready');
     }
-    const { MessagePriority } = await import('leancloud-realtime');
     const conversation = await getEngagementConversation();
     const file = await getOrCreateEngagementFile();
     const message = new lcImageMessageCtor(file);
@@ -729,7 +785,7 @@ export class DanmuService implements IMatchEngagementGateway {
       [RMLIVE_MSG_TYPE]: MSG_TYPE_SUPPORT_TEAM,
       [RMLIVE_MSG_FOR_TEAM]: encodeTeamTarget(matchKey, collegeName),
     });
-    await conversation.send(message, { priority: MessagePriority.LOW });
+    await conversation.send(message);
   }
 
   /** ImageMessage attrs: match_reaction + rmlive:msg_for_match (matchKey) + rmlive:reaction_id. */
@@ -737,7 +793,6 @@ export class DanmuService implements IMatchEngagementGateway {
     if (!lcImageMessageCtor) {
       throw new Error('ImageMessage not ready');
     }
-    const { MessagePriority } = await import('leancloud-realtime');
     const conversation = await getEngagementConversation();
     const file = await getOrCreateEngagementFile();
     const message = new lcImageMessageCtor(file);
@@ -746,7 +801,7 @@ export class DanmuService implements IMatchEngagementGateway {
       [RMLIVE_MSG_FOR_MATCH]: matchKey,
       [RMLIVE_REACTION_ID]: reactionId,
     });
-    await conversation.send(message, { priority: MessagePriority.LOW });
+    await conversation.send(message);
   }
 
   async disconnect(): Promise<void> {

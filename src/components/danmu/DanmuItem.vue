@@ -120,7 +120,7 @@ const addFilterSchool = () => {
 </script>
 
 <template>
-  <article class="danmu-item" :class="sideClass" tabindex="0" @contextmenu.prevent="showTooltip" @blur="scheduleHide">
+  <article class="danmu-item" :class="sideClass" tabindex="0" @click="showTooltip" @focus="showTooltip">
     <aside class="meta-col">
       <p class="school">{{ school }}</p>
       <p class="nickname">{{ nickname }}</p>
