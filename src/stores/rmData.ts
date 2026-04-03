@@ -1,19 +1,6 @@
 import { useLocalStorage } from '@vueuse/core';
 import { defineStore } from 'pinia';
-import { computed, ref, watch, type Ref } from 'vue';
-import {
-  extractLiveZones,
-  fetchCurrentAndNextMatches,
-  fetchGroupRankInfo,
-  fetchGroupsOrder,
-  fetchLiveGameInfo,
-  fetchRobotData,
-  fetchSchedule,
-  resolveLiveStreamUrl,
-  startRmPolling,
-  type RmPollingController,
-} from '../api/rmApi';
-import { BOOTSTRAP_PER_REQUEST_TIMEOUT_MS, BOOTSTRAP_TOTAL_TIMEOUT_MS } from '../constants/runtime';
+import { ref } from 'vue';
 import type {
   CurrentAndNextMatches,
   GroupRankInfo,
@@ -22,34 +9,21 @@ import type {
   RobotData,
   Schedule,
 } from '../types/api';
-import { resolveZoneChatRoomId } from '../utils/chatRoomView';
-import { buildTeamGroupMap, extractGroupSections } from '../utils/groupView';
-import { getRunningMatch, getScheduleEventTitle, getScheduleRows, type MatchView } from '../utils/matchView';
-import { logWarn, toErrorSummary } from '../utils/observability';
-import {
-  resolveDefaultQualityRes,
-  resolveEffectiveStreamErrorMessage,
-  toPlayerQualityOptions,
-} from '../utils/rmStreamView';
-import { getNowEpochSeconds } from '../utils/timeNow';
-import {
-  normalizeZoneId,
-  resolveZoneUiState,
-  toZoneOptionItem,
-  type ZoneOptionItem,
-  type ZoneUiState,
-} from '../utils/zoneView';
+import type { GroupSection, TeamGroupMeta } from '../utils/groupView';
+import type { MatchView } from '../utils/matchView';
+import { logInfo, logWarn } from '../utils/observability';
+import type { PlayerQualityOption } from '../utils/rmStreamView';
+import { normalizeZoneId, type ZoneOptionItem, type ZoneUiState } from '../utils/zoneView';
+import type {
+  RmDataInitPayload,
+  RmDataSnapshot,
+  RmDataWorkerIncomingMessage,
+  RmDataWorkerOutgoingMessage,
+} from '../workers/rmDataProtocol';
 
 export type { ZoneOptionItem, ZoneUiState };
 
-/**
- * Live data + zone/stream selection.
- *
- * - `selectedZoneId`: canonical UI / props id (normalized when written); kept in sync with enabled zones when not manual, or coerced when orphan.
- * - `effectiveSelectedZoneId`: same as selected when set; else falls back to resolved `selectedZone` (defensive reads).
- */
 export const useRmDataStore = defineStore('rm-data', () => {
-  // --- state ---
   const liveGameInfo = ref<LiveGameInfo | null>(null);
   const currentAndNextMatches = ref<CurrentAndNextMatches | null>(null);
   const groupsOrder = ref<GroupsOrder | null>(null);
@@ -58,209 +32,195 @@ export const useRmDataStore = defineStore('rm-data', () => {
   const schedule = ref<Schedule | null>(null);
 
   const selectedZoneId = ref<string | null>(null);
-  const historySelectedZoneId = useLocalStorage('rmlive:zone-selection', null);
+  const effectiveSelectedZoneId = ref<string | null>(null);
   const selectedQualityRes = ref<string | null>(null);
-  const hasManualZoneSelection = ref(false);
-
+  const selectedZoneName = ref<string | null>(null);
+  const selectedZoneUiState = ref<ZoneUiState | null>(null);
   const streamLoading = ref(true);
   const streamErrorMessage = ref('');
 
-  let pollingController: RmPollingController | null = null;
-  let bootstrapSeq = 0;
+  const zoneOptions = ref<ZoneOptionItem[]>([]);
+  const effectiveStreamUrl = ref<string | null>(null);
+  const effectiveStreamErrorMessage = ref('');
+  const groupSections = ref<GroupSection[]>([]);
+  const teamGroupMap = ref<Record<string, TeamGroupMeta>>({});
+  const scheduleEventTitle = ref('');
+  const playerQualityOptions = ref<PlayerQualityOption[]>([]);
+  const selectedZoneChatRoomId = ref<string | null>(null);
+  const scheduleMatchRows = ref<MatchView[]>([]);
+  const runningMatchForSelectedZone = ref<MatchView | null>(null);
 
-  // --- computed ---
-  const liveZones = computed(() => extractLiveZones(liveGameInfo.value));
-  const selectedZone = computed(() => {
-    if (!liveZones.value.length) {
-      return null;
-    }
+  const historySelectedZoneId = useLocalStorage<string | null>('rmlive:zone-selection', null);
 
-    const targetId = normalizeZoneId(selectedZoneId.value);
-    return liveZones.value.find((zone) => normalizeZoneId(zone.zoneId) === targetId) ?? liveZones.value[0];
-  });
-  const selectedZoneName = computed(() => selectedZone.value?.zoneName ?? null);
+  let worker: Worker | null = null;
+  let isStopping = false;
+  let hasManualZoneSelection = false;
+  let visibilityListenerAttached = false;
+  let workerRestarting = false;
 
-  /** Prefer `selectedZoneId`; if empty, mirrors `selectedZone` fallback for rare edge reads. */
-  const effectiveSelectedZoneId = computed(() => {
-    const fromRef = normalizeZoneId(selectedZoneId.value);
-    if (fromRef) {
-      return fromRef;
-    }
-    return normalizeZoneId(selectedZone.value?.zoneId) || null;
-  });
+  function applySnapshot(snapshot: RmDataSnapshot) {
+    liveGameInfo.value = snapshot.liveGameInfo;
+    currentAndNextMatches.value = snapshot.currentAndNextMatches;
+    groupsOrder.value = snapshot.groupsOrder;
+    groupRankInfo.value = snapshot.groupRankInfo;
+    robotData.value = snapshot.robotData;
+    schedule.value = snapshot.schedule;
 
-  const inferredLiveZoneIdSet = computed(() => {
-    const payload = currentAndNextMatches.value;
-    if (!payload) {
-      return new Set<string>();
-    }
+    selectedZoneId.value = snapshot.selectedZoneId;
+    effectiveSelectedZoneId.value = snapshot.effectiveSelectedZoneId;
+    selectedQualityRes.value = snapshot.selectedQualityRes;
+    selectedZoneName.value = snapshot.selectedZoneName;
+    selectedZoneUiState.value = snapshot.selectedZoneUiState;
+    streamLoading.value = snapshot.streamLoading;
+    streamErrorMessage.value = snapshot.streamErrorMessage;
 
-    const buckets = Array.isArray(payload)
-      ? payload
-      : (((payload as Record<string, unknown>).data ??
-          (payload as Record<string, unknown>).list ??
-          (payload as Record<string, unknown>).records ??
-          []) as unknown[]);
-
-    const liveStatuses = new Set(['STARTED', 'RUNNING', 'IN_PROGRESS', 'ONGOING', 'PLAYING']);
-    const ids = new Set<string>();
-
-    for (const rawItem of buckets) {
-      if (!rawItem || typeof rawItem !== 'object') {
-        continue;
-      }
-
-      const item = rawItem as Record<string, unknown>;
-      const currentMatch = item.currentMatch as Record<string, unknown> | undefined;
-      const status = String(currentMatch?.status ?? '')
-        .trim()
-        .toUpperCase();
-
-      if (!liveStatuses.has(status)) {
-        continue;
-      }
-
-      const zone =
-        (currentMatch?.zone as Record<string, unknown> | undefined) ??
-        (item.zone as Record<string, unknown> | undefined) ??
-        undefined;
-      const id = normalizeZoneId(zone?.id ?? zone?.zoneId ?? item.zoneId);
-      if (id) {
-        ids.add(id);
-      }
-    }
-
-    return ids;
-  });
-
-  function pickAutoZoneIdByPriority(options: ZoneOptionItem[], historyZoneId: string | null): string | null {
-    if (!options.length) {
-      return null;
-    }
-
-    const historyNorm = normalizeZoneId(historyZoneId);
-    const norm = (value: string) => normalizeZoneId(value);
-
-    const historyAndLive =
-      historyNorm !== ''
-        ? options.find((item) => norm(item.value) === historyNorm && item.state === 'live')
-        : null;
-    if (historyAndLive) {
-      return historyAndLive.value;
-    }
-
-    const living = options.find((item) => item.state === 'live');
-    if (living) {
-      return living.value;
-    }
-
-    const inPeriodButOffline = options.find((item) => item.state === 'offline');
-    if (inPeriodButOffline) {
-      return inPeriodButOffline.value;
-    }
-
-    return options[0]?.value ?? null;
+    zoneOptions.value = snapshot.zoneOptions;
+    effectiveStreamUrl.value = snapshot.effectiveStreamUrl;
+    effectiveStreamErrorMessage.value = snapshot.effectiveStreamErrorMessage;
+    groupSections.value = snapshot.groupSections;
+    teamGroupMap.value = snapshot.teamGroupMap;
+    scheduleEventTitle.value = snapshot.scheduleEventTitle;
+    playerQualityOptions.value = snapshot.playerQualityOptions;
+    selectedZoneChatRoomId.value = snapshot.selectedZoneChatRoomId;
+    scheduleMatchRows.value = snapshot.scheduleMatchRows;
+    runningMatchForSelectedZone.value = snapshot.runningMatchForSelectedZone;
   }
 
-  const zoneOptions = computed<ZoneOptionItem[]>(() => {
-    const nowEpoch = getNowEpochSeconds();
-
-    return liveZones.value.map((item) => toZoneOptionItem(item, nowEpoch));
-  });
-
-  const streamUrl = computed(() =>
-    resolveLiveStreamUrl(liveGameInfo.value, selectedZoneId.value, selectedQualityRes.value),
-  );
-  const selectedZoneUiState = computed<ZoneUiState | null>(() => {
-    const zone = selectedZone.value;
-    if (!zone) {
-      return null;
-    }
-    return resolveZoneUiState(zone, getNowEpochSeconds());
-  });
-  const hasStreamRequestError = computed(() => streamErrorMessage.value.trim().length > 0);
-  const canPlaySelectedZone = computed(() => {
-    const zone = selectedZone.value;
-    if (!zone || zone.qualities.length === 0) {
-      return false;
-    }
-    return selectedZoneUiState.value === 'live' && !hasStreamRequestError.value;
-  });
-  const effectiveStreamUrl = computed(() => (canPlaySelectedZone.value ? streamUrl.value : null));
-  const effectiveStreamErrorMessage = computed(() =>
-    resolveEffectiveStreamErrorMessage(
-      canPlaySelectedZone.value,
-      selectedZone.value,
-      selectedZoneUiState.value,
-      streamErrorMessage.value,
-    ),
-  );
-
-  const groupSections = computed(() =>
-    extractGroupSections(groupsOrder.value, selectedZoneId.value, selectedZoneName.value),
-  );
-  const teamGroupMap = computed(() => buildTeamGroupMap(groupSections.value));
-
-  const scheduleEventTitle = computed(() => getScheduleEventTitle(schedule.value));
-  const playerQualityOptions = computed(() => toPlayerQualityOptions(selectedZone.value));
-  const selectedZoneChatRoomId = computed(() =>
-    resolveZoneChatRoomId(liveGameInfo.value, selectedZoneId.value, selectedZoneName.value),
-  );
-  const scheduleMatchRows = computed(() => getScheduleRows(schedule.value, liveGameInfo.value));
-  const runningMatchForSelectedZone = computed((): MatchView | null =>
-    getRunningMatch(scheduleMatchRows.value, selectedZoneId.value),
-  );
-
-  // --- zone / quality selection ---
-  function ensureQualitySelection() {
-    selectedQualityRes.value = resolveDefaultQualityRes(selectedZone.value, selectedQualityRes.value);
+  function buildInitPayload(): RmDataInitPayload {
+    return {
+      historySelectedZoneId: historySelectedZoneId.value,
+      selectedZoneId: selectedZoneId.value,
+      selectedQualityRes: selectedQualityRes.value,
+      hasManualZoneSelection,
+    };
   }
 
-  function commitSelectedZoneId(nextId: string | null, mode: 'manual' | 'auto') {
-    const normalized = nextId != null && nextId !== '' ? normalizeZoneId(nextId) : null;
-    const stored = normalized || null;
-
-    if (mode === 'manual') {
-      hasManualZoneSelection.value = true;
-      historySelectedZoneId.value = stored;
-    }
-
-    selectedZoneId.value = stored;
-    ensureQualitySelection();
-  }
-
-  function ensureZoneSelection() {
-    const options = zoneOptions.value;
-    if (!options.length) {
-      selectedZoneId.value = null;
-      selectedQualityRes.value = null;
+  function postToWorker(message: RmDataWorkerIncomingMessage) {
+    if (!worker || isStopping) {
       return;
     }
 
-    const preferred = pickAutoZoneIdByPriority(options, historySelectedZoneId.value);
-    const preferredNorm = normalizeZoneId(preferred);
+    worker.postMessage(message);
+  }
 
-    const currentNorm = normalizeZoneId(selectedZoneId.value);
-    const currentExists = currentNorm !== '' && options.some((item) => normalizeZoneId(item.value) === currentNorm);
-
-    if (!hasManualZoneSelection.value) {
-      if (preferredNorm && preferredNorm !== currentNorm) {
-        commitSelectedZoneId(preferred, 'auto');
-      } else if (!currentExists && preferredNorm) {
-        commitSelectedZoneId(preferred, 'auto');
-      }
+  function setVisibilityInWorker() {
+    if (typeof document === 'undefined') {
       return;
     }
 
-    if (!currentExists && preferredNorm) {
-      selectedZoneId.value = preferredNorm;
-      ensureQualitySelection();
-    }
+    postToWorker({ type: 'VISIBILITY_CHANGED', payload: { hidden: document.hidden } });
   }
 
-  function syncZoneAndQuality() {
-    ensureZoneSelection();
-    ensureQualitySelection();
+  function attachVisibilityListener() {
+    if (visibilityListenerAttached || typeof document === 'undefined') {
+      return;
+    }
+
+    document.addEventListener('visibilitychange', setVisibilityInWorker);
+    visibilityListenerAttached = true;
+  }
+
+  function detachVisibilityListener() {
+    if (!visibilityListenerAttached || typeof document === 'undefined') {
+      return;
+    }
+
+    document.removeEventListener('visibilitychange', setVisibilityInWorker);
+    visibilityListenerAttached = false;
+  }
+
+  function spawnWorker(): Worker {
+    if (worker) {
+      worker.terminate();
+    }
+
+    const nextWorker = new Worker(new URL('../workers/rmData.worker.ts', import.meta.url), { type: 'module' });
+    nextWorker.onmessage = (event: MessageEvent<RmDataWorkerOutgoingMessage>) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+
+      if (data.type === 'BOOTSTRAP_STATE' || data.type === 'PATCH_STATE') {
+        applySnapshot(data.payload);
+        return;
+      }
+
+      if (data.type === 'STREAM_ERROR') {
+        streamErrorMessage.value = data.payload.message;
+        return;
+      }
+
+      if (data.type === 'LOG') {
+        if (data.payload.level === 'info') {
+          logInfo(data.payload.scope, data.payload.message, data.payload.meta);
+        } else {
+          logWarn(data.payload.scope, data.payload.message, data.payload.meta);
+        }
+      }
+    };
+
+    nextWorker.onerror = (event) => {
+      if (isStopping) {
+        return;
+      }
+
+      const error = event.error ?? event.message;
+      logWarn('rm-data-worker', 'worker error', { error: String(error ?? 'unknown') });
+
+      if (workerRestarting) {
+        return;
+      }
+
+      workerRestarting = true;
+      streamLoading.value = true;
+      streamErrorMessage.value = '';
+
+      try {
+        nextWorker.terminate();
+      } catch {
+        // ignore terminate races
+      }
+
+      worker = null;
+      const restartedWorker = spawnWorker();
+      restartedWorker.postMessage({ type: 'INIT', payload: buildInitPayload() });
+      setVisibilityInWorker();
+      workerRestarting = false;
+    };
+
+    nextWorker.onmessageerror = (event) => {
+      logWarn('rm-data-worker', 'message error', { error: String(event.data ?? 'unknown') });
+    };
+
+    worker = nextWorker;
+    return nextWorker;
+  }
+
+  function startWorker() {
+    isStopping = false;
+    const currentWorker = spawnWorker();
+    currentWorker.postMessage({ type: 'INIT', payload: buildInitPayload() });
+    attachVisibilityListener();
+    setVisibilityInWorker();
+  }
+
+  function stopWorker() {
+    isStopping = true;
+    detachVisibilityListener();
+
+    if (!worker) {
+      return;
+    }
+
+    try {
+      worker.postMessage({ type: 'STOP' });
+    } catch {
+      // ignore stop races
+    }
+
+    worker.terminate();
+    worker = null;
   }
 
   function selectZone(value: string | null) {
@@ -271,163 +231,34 @@ export const useRmDataStore = defineStore('rm-data', () => {
       }
     }
 
-    commitSelectedZoneId(value, 'manual');
+    hasManualZoneSelection = true;
+    const normalized = value != null && value !== '' ? normalizeZoneId(value) : null;
+    selectedZoneId.value = normalized;
+    historySelectedZoneId.value = normalized;
+    postToWorker({ type: 'USER_SELECT_ZONE', payload: { zoneId: normalized } });
   }
 
-  watch(liveZones, syncZoneAndQuality, { immediate: true });
-
-  function stopPolling() {
-    bootstrapSeq += 1;
-    pollingController?.stopAll();
-    pollingController = null;
+  function selectQuality(qualityRes: string | null) {
+    selectedQualityRes.value = qualityRes;
+    postToWorker({ type: 'USER_SELECT_QUALITY', payload: { qualityRes } });
   }
 
   function startPolling() {
-    stopPolling();
-    hasManualZoneSelection.value = false;
+    stopWorker();
+    hasManualZoneSelection = false;
     streamLoading.value = true;
     streamErrorMessage.value = '';
-
-    const seq = ++bootstrapSeq;
-
-    void (async () => {
-      const startTime = Date.now();
-      const minRemainingTimeoutMs = 1000;
-
-      function withBootstrapTimeout<T>(promise: Promise<T>): Promise<T> {
-        return new Promise<T>((resolve, reject) => {
-          const elapsedTime = Date.now() - startTime;
-          const remainingTime = Math.max(minRemainingTimeoutMs, BOOTSTRAP_TOTAL_TIMEOUT_MS - elapsedTime);
-          const timeout = Math.min(BOOTSTRAP_PER_REQUEST_TIMEOUT_MS, remainingTime);
-
-          const timer = setTimeout(() => reject(new Error('bootstrap timeout')), timeout);
-
-          promise
-            .then((value) => {
-              clearTimeout(timer);
-              resolve(value);
-            })
-            .catch((error) => {
-              clearTimeout(timer);
-              reject(error);
-            });
-        });
-      }
-
-      const [
-        liveGameInfoResult,
-        currentAndNextResult,
-        groupsOrderResult,
-        scheduleResult,
-        robotResult,
-        groupRankResult,
-      ] = await Promise.allSettled([
-        withBootstrapTimeout(fetchLiveGameInfo()),
-        withBootstrapTimeout(fetchCurrentAndNextMatches()),
-        withBootstrapTimeout(fetchGroupsOrder()),
-        withBootstrapTimeout(fetchSchedule()),
-        withBootstrapTimeout(fetchRobotData()),
-        withBootstrapTimeout(fetchGroupRankInfo()),
-      ]);
-
-      if (seq !== bootstrapSeq) {
-        return;
-      }
-
-      const take = <T>(r: PromiseSettledResult<T>): T | null => (r.status === 'fulfilled' ? r.value : null);
-
-      function applyFulfilled<T>(target: Ref<T | null>, r: PromiseSettledResult<T>) {
-        const v = take(r);
-        if (v != null) {
-          target.value = v;
-        }
-      }
-
-      applyFulfilled(liveGameInfo, liveGameInfoResult);
-      applyFulfilled(currentAndNextMatches, currentAndNextResult);
-      applyFulfilled(groupsOrder, groupsOrderResult);
-      applyFulfilled(schedule, scheduleResult);
-      applyFulfilled(robotData, robotResult);
-      applyFulfilled(groupRankInfo, groupRankResult);
-
-      const settledMatrix: Array<[string, PromiseSettledResult<unknown>]> = [
-        ['liveGameInfo', liveGameInfoResult],
-        ['currentAndNextMatches', currentAndNextResult],
-        ['groupsOrder', groupsOrderResult],
-        ['schedule', scheduleResult],
-        ['robotData', robotResult],
-        ['groupRankInfo', groupRankResult],
-      ];
-      const rejectedSources = settledMatrix.filter(([, r]) => r.status === 'rejected').map(([name]) => name);
-
-      if (rejectedSources.length > 0) {
-        logWarn('bootstrap', 'bootstrap completed with rejected requests', {
-          rejectedSources,
-        });
-      }
-
-      const bootstrapStreamErrorMessage =
-        liveGameInfoResult.status === 'rejected' ? '直播流请求失败，请检查网络后重试' : null;
-      if (bootstrapStreamErrorMessage) {
-        logWarn('stream', 'live_game_info bootstrap request failed', {
-          error: toErrorSummary(liveGameInfoResult.status === 'rejected' ? liveGameInfoResult.reason : 'unknown'),
-        });
-        streamErrorMessage.value = bootstrapStreamErrorMessage;
-      }
-
-      streamLoading.value = false;
-
-      pollingController = startRmPolling(
-        {
-          onLiveGameInfo(data) {
-            liveGameInfo.value = data;
-            streamErrorMessage.value = '';
-          },
-          onCurrentAndNextMatches(data) {
-            currentAndNextMatches.value = data;
-            ensureZoneSelection();
-          },
-          onGroupsOrder(data) {
-            groupsOrder.value = data;
-          },
-          onRobotData(data) {
-            robotData.value = data;
-          },
-          onSchedule(data) {
-            schedule.value = data;
-            ensureZoneSelection();
-          },
-          onError() {
-            if (selectedZoneUiState.value === 'live') {
-              logWarn('stream', 'polling reported error with no active stream url', {
-                selectedZoneId: selectedZoneId.value,
-              });
-              streamErrorMessage.value = '直播流暂时不可用，请稍后重试';
-            }
-          },
-        },
-        {},
-        {
-          robotDataDelayMs: 5000,
-        },
-      );
-    })();
+    startWorker();
   }
 
-  async function retryLiveStream() {
-    streamErrorMessage.value = '';
-    streamLoading.value = true;
+  function stopPolling() {
+    stopWorker();
+  }
 
-    try {
-      liveGameInfo.value = await fetchLiveGameInfo();
-    } catch (error) {
-      logWarn('stream', 'retry live stream failed', {
-        error: toErrorSummary(error),
-      });
-      streamErrorMessage.value = '直播流请求失败，请检查网络后重试';
-    } finally {
-      streamLoading.value = false;
-    }
+  function retryLiveStream() {
+    streamLoading.value = true;
+    streamErrorMessage.value = '';
+    postToWorker({ type: 'RETRY_STREAM' });
   }
 
   return {
@@ -439,9 +270,9 @@ export const useRmDataStore = defineStore('rm-data', () => {
     selectedZoneId,
     effectiveSelectedZoneId,
     selectedQualityRes,
-    streamLoading,
-    selectedZone,
     selectedZoneName,
+    selectedZoneUiState,
+    streamLoading,
     zoneOptions,
     effectiveStreamUrl,
     effectiveStreamErrorMessage,
@@ -453,6 +284,7 @@ export const useRmDataStore = defineStore('rm-data', () => {
     scheduleMatchRows,
     runningMatchForSelectedZone,
     selectZone,
+    selectQuality,
     startPolling,
     stopPolling,
     retryLiveStream,
