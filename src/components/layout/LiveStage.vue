@@ -26,6 +26,7 @@ const danmuEnabledAtLoad = Boolean(uiStore.danmuEnabled);
 
 const emit = defineEmits<{
   danmu: [msg: DanmuMessage];
+  danmuReset: [];
 }>();
 
 const LivePlayer = defineAsyncComponent(() => import('../live/LivePlayer.vue'));
@@ -41,6 +42,10 @@ function onRetry() {
 
 function onDanmu(msg: DanmuMessage) {
   emit('danmu', msg);
+}
+
+function onDanmuReset() {
+  emit('danmuReset');
 }
 </script>
 
@@ -59,6 +64,7 @@ function onDanmu(msg: DanmuMessage) {
             :chat-room-id="selectedZoneChatRoomId"
             @retry="onRetry"
             @danmu="onDanmu"
+            @danmu-reset="onDanmuReset"
           />
           <div v-if="hasCurrentMatch && reactionEnabled" class="mt-2">
             <MatchReactionStrip />
@@ -82,6 +88,7 @@ function onDanmu(msg: DanmuMessage) {
         :chat-room-id="selectedZoneChatRoomId"
         @retry="onRetry"
         @danmu="onDanmu"
+        @danmu-reset="onDanmuReset"
       />
       <div v-if="hasCurrentMatch && reactionEnabled" class="mt-2">
         <MatchReactionStrip />

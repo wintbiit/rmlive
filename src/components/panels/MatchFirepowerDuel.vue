@@ -34,6 +34,17 @@ const animatedBlueWidth = computed(() => {
 
 const animatedRedCount = computed(() => Math.round(animatedRedSupport.value));
 const animatedBlueCount = computed(() => Math.round(animatedBlueSupport.value));
+
+const animatedPkLeft = computed(() => {
+  const total = animatedTotal.value;
+  if (total <= 0) {
+    return '50%';
+  }
+
+  const ratio = animatedRedSupport.value / total;
+  const bounded = Math.min(0.94, Math.max(0.06, ratio));
+  return `${bounded * 100}%`;
+});
 </script>
 
 <template>
@@ -52,27 +63,13 @@ const animatedBlueCount = computed(() => Math.round(animatedBlueSupport.value));
         :style="{ width: animatedBlueWidth }"
       />
     </div>
-    <div class="pointer-events-none absolute inset-y-0 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center">
-      <svg viewBox="0 0 64 46" class="h-7 w-10 sm:h-8 sm:w-11" aria-hidden="true">
-        <defs>
-          <linearGradient id="pkBg" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#f8fafc" stop-opacity="0.95" />
-            <stop offset="100%" stop-color="#cbd5e1" stop-opacity="0.9" />
-          </linearGradient>
-        </defs>
-        <path d="M12 4h40l8 19-8 19H12L4 23z" fill="url(#pkBg)" stroke="#0f172a" stroke-opacity="0.35" />
-        <text
-          x="32"
-          y="29"
-          text-anchor="middle"
-          font-size="18"
-          font-weight="800"
-          fill="#0f172a"
-          style="font-family: ui-sans-serif, system-ui, sans-serif"
-        >
-          PK
-        </text>
-      </svg>
+
+    <div
+      class="pointer-events-none absolute inset-y-0 z-10 flex -translate-x-1/2 items-center justify-center"
+      :style="{ left: animatedPkLeft }"
+      aria-hidden="true"
+    >
+      <img src="/pk-badge.svg" alt="" class="h-9 w-14 sm:h-10 sm:w-[4.2rem]" />
     </div>
 
     <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3">

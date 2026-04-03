@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "cross-env VITE_RM_MOCK=1 vite --mode mock",
+    "create:im-client": "node --experimental-strip-types src/scripts/createImClient.ts",
     "build": "vue-tsc -b && vite build",
     "build:iframe": "cross-env VITE_BUILD_IFRAME=true vite build --mode iframe",
     "build:all": "pnpm build && pnpm build:iframe",
@@ -43,6 +44,7 @@
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/tsconfig": "^0.9.0",
     "cross-env": "^7.0.3",
+    "dotenv": "^17.4.0",
     "eslint": "^9.22.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.3",

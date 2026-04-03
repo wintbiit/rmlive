@@ -38,6 +38,10 @@ function onDanmuReceived(msg: DanmuMessage) {
   danmuStore.addMessage(msg);
 }
 
+function onDanmuReset() {
+  danmuStore.clearMessages();
+}
+
 bindDanmuRoomReset(selectedZoneChatRoomId, danmuStore.clearMessages);
 
 const enableSecondaryPanels = ref(false);
@@ -86,7 +90,7 @@ onBeforeUnmount(() => {
       <CurrentMatchPanel :key="dataStore.selectedZoneId ?? 'zone-empty'" @team-select="onOpenTeamData" />
     </section>
 
-    <LiveStage @danmu="onDanmuReceived" />
+    <LiveStage @danmu="onDanmuReceived" @danmu-reset="onDanmuReset" />
 
     <ScheduleArea :enabled="enableSecondaryPanels" @team-select="onOpenTeamData" />
 

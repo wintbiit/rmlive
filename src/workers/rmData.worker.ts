@@ -76,6 +76,7 @@ const state: WorkerState = {
 
 let stopped = false;
 let bootstrapToken = 0;
+let streamProbeToken = 0;
 let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingSnapshotKind: 'BOOTSTRAP_STATE' | 'PATCH_STATE' | null = null;
 
@@ -171,15 +172,9 @@ function buildSnapshot(): RmDataSnapshot {
   const selectedZoneId = selectedZone ? normalizeZoneId(selectedZone.zoneId) || null : null;
   const selectedZoneName = selectedZone?.zoneName ?? null;
   const effectiveSelectedZoneId = normalizeZoneId(state.selectedZoneId) || selectedZoneId || null;
-  const canPlaySelectedZone = Boolean(
-    selectedZone &&
-    selectedZoneUiState === 'live' &&
-    selectedZone.qualities.length > 0 &&
-    !state.streamErrorMessage.trim(),
-  );
-  const effectiveStreamUrl = canPlaySelectedZone
-    ? resolveLiveStreamUrl(state.liveGameInfo, effectiveSelectedZoneId, state.selectedQualityRes)
-    : null;
+  const resolvedStreamUrl = resolveLiveStreamUrl(state.liveGameInfo, effectiveSelectedZoneId, state.selectedQualityRes);
+  const canPlaySelectedZone = Boolean(selectedZone && resolvedStreamUrl && !state.streamErrorMessage.trim());
+  const effectiveStreamUrl = canPlaySelectedZone ? resolvedStreamUrl : null;
   const effectiveStreamErrorMessage = resolveEffectiveStreamErrorMessage(
     canPlaySelectedZone,
     selectedZone,
@@ -327,8 +322,84 @@ function setStreamError(message: string) {
   self.postMessage({ type: 'STREAM_ERROR', payload: { message } });
 }
 
+async function isStreamUrlReachable(url: string): Promise<boolean> {
+  const timeoutMs = 6000;
+
+  async function run(method: 'HEAD' | 'GET'): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, {
+        method,
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  try {
+    const head = await run('HEAD');
+    if (head.ok) {
+      return true;
+    }
+    if (head.status !== 405 && head.status !== 501) {
+      return false;
+    }
+  } catch {
+    // fallback to GET
+  }
+
+  try {
+    const get = await run('GET');
+    return get.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function probeSelectedStreamAvailability(options: { showLoading: boolean }) {
+  const token = ++streamProbeToken;
+  const liveZones = getLiveZoneOptions();
+  const selectedZone = getSelectedLiveZone(liveZones);
+  const effectiveSelectedZoneId =
+    normalizeZoneId(state.selectedZoneId) || normalizeZoneId(selectedZone?.zoneId) || null;
+  const streamUrl = resolveLiveStreamUrl(state.liveGameInfo, effectiveSelectedZoneId, state.selectedQualityRes);
+
+  if (options.showLoading) {
+    state.streamLoading = true;
+    scheduleSnapshot('PATCH_STATE');
+  }
+
+  if (!streamUrl) {
+    if (token !== streamProbeToken) {
+      return;
+    }
+
+    state.streamErrorMessage = '';
+    if (options.showLoading) {
+      state.streamLoading = false;
+    }
+    scheduleSnapshot('PATCH_STATE');
+    return;
+  }
+
+  const reachable = await isStreamUrlReachable(streamUrl);
+  if (token !== streamProbeToken) {
+    return;
+  }
+
+  state.streamErrorMessage = reachable ? '' : '直播流暂时不可用，请稍后重试';
+  if (options.showLoading) {
+    state.streamLoading = false;
+  }
+  scheduleSnapshot('PATCH_STATE');
+}
+
 function stopAll() {
   stopped = true;
+  streamProbeToken += 1;
   if (snapshotTimer) {
     clearTimeout(snapshotTimer);
     snapshotTimer = null;
@@ -401,8 +472,8 @@ async function runBootstrap(payload: RmDataInitPayload) {
   }
 
   syncSelectionAfterDataChange();
-  state.streamLoading = false;
   scheduleSnapshot('BOOTSTRAP_STATE');
+  void probeSelectedStreamAvailability({ showLoading: true });
   void payload;
 }
 
@@ -416,9 +487,8 @@ function startPollingLoops() {
       async () => {
         try {
           state.liveGameInfo = await fetchLiveGameInfo();
-          state.streamErrorMessage = '';
           syncSelectionAfterDataChange();
-          scheduleSnapshot('PATCH_STATE');
+          void probeSelectedStreamAvailability({ showLoading: false });
         } catch (error) {
           const liveZones = getLiveZoneOptions();
           const selectedZone = getSelectedLiveZone(liveZones);
@@ -543,14 +613,14 @@ self.addEventListener('message', (event: MessageEvent<RmDataWorkerIncomingMessag
     state.selectedZoneId =
       data.payload.zoneId != null && data.payload.zoneId !== '' ? normalizeZoneId(data.payload.zoneId) : null;
     syncSelectionAfterDataChange();
-    scheduleSnapshot('PATCH_STATE');
+    void probeSelectedStreamAvailability({ showLoading: true });
     return;
   }
 
   if (data.type === 'USER_SELECT_QUALITY') {
     state.selectedQualityRes =
       data.payload.qualityRes && data.payload.qualityRes.trim() ? data.payload.qualityRes : null;
-    scheduleSnapshot('PATCH_STATE');
+    void probeSelectedStreamAvailability({ showLoading: true });
     return;
   }
 
@@ -561,6 +631,7 @@ self.addEventListener('message', (event: MessageEvent<RmDataWorkerIncomingMessag
       .then((info) => {
         state.liveGameInfo = info;
         syncSelectionAfterDataChange();
+        return probeSelectedStreamAvailability({ showLoading: false });
       })
       .catch((error) => {
         const message = '直播流请求失败，请检查网络后重试';
@@ -568,8 +639,10 @@ self.addEventListener('message', (event: MessageEvent<RmDataWorkerIncomingMessag
         postLog('warn', 'stream', 'retry live stream failed', { error: toErrorSummary(error) });
       })
       .finally(() => {
-        state.streamLoading = false;
-        scheduleSnapshot('PATCH_STATE');
+        if (state.streamLoading) {
+          state.streamLoading = false;
+          scheduleSnapshot('PATCH_STATE');
+        }
       });
   }
 });

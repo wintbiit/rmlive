@@ -18,7 +18,7 @@ interface SupportFxEvent {
   createdAt: number;
 }
 
-function normSchool(s: string): string {
+function normSchool(s: string | null | undefined): string {
   return String(s ?? '').trim();
 }
 
@@ -31,10 +31,14 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
   const reactions = ref<Record<string, number>>({});
   const seenEngagementIds = ref<Set<string>>(new Set());
   const hydrateLoading = ref(false);
+  const viewerCount = ref<number | null>(null);
   const supportFxEvents = ref<SupportFxEvent[]>([]);
 
   const danmuServiceRef = shallowRef<IMatchEngagementGateway | null>(null);
+  const viewerCountServiceRef = shallowRef<{ fetchChatRoomCount(): Promise<number> } | null>(null);
   const supportFxTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  let hydrateRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let viewerCountPollTimer: ReturnType<typeof setInterval> | null = null;
 
   const redPercent = computed(() => {
     const t = redSupport.value + blueSupport.value;
@@ -61,15 +65,69 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
   }
 
   function resetCounts() {
+    clearHydrateRefreshTimer();
+    clearViewerCountPollTimer();
     redSupport.value = 0;
     blueSupport.value = 0;
     reactions.value = {};
     seenEngagementIds.value = new Set();
     clearSupportFx();
+    viewerCount.value = null;
   }
 
   function registerDanmuService(service: IMatchEngagementGateway | null) {
     danmuServiceRef.value = service;
+    if (!service) {
+      clearHydrateRefreshTimer();
+      return;
+    }
+  }
+
+  function registerViewerCountService(service: { fetchChatRoomCount(): Promise<number> } | null) {
+    viewerCountServiceRef.value = service;
+    if (!service) {
+      clearViewerCountPollTimer();
+      viewerCount.value = null;
+      return;
+    }
+
+    if (currentMatchKey.value) {
+      startViewerCountPolling();
+    }
+  }
+
+  function clearHydrateRefreshTimer() {
+    if (hydrateRefreshTimer) {
+      clearTimeout(hydrateRefreshTimer);
+      hydrateRefreshTimer = null;
+    }
+  }
+
+  function clearViewerCountPollTimer() {
+    if (viewerCountPollTimer) {
+      clearInterval(viewerCountPollTimer);
+      viewerCountPollTimer = null;
+    }
+  }
+
+  function startViewerCountPolling() {
+    clearViewerCountPollTimer();
+    if (!viewerCountServiceRef.value || !currentMatchKey.value) {
+      return;
+    }
+
+    void refreshViewerCount();
+    viewerCountPollTimer = setInterval(() => {
+      void refreshViewerCount();
+    }, 5000);
+  }
+
+  function scheduleHydrateRefresh(delayMs = 1800) {
+    clearHydrateRefreshTimer();
+    hydrateRefreshTimer = setTimeout(() => {
+      hydrateRefreshTimer = null;
+      void refreshHydrate();
+    }, delayMs);
   }
 
   function applyRunningMatch(match: MatchView | null) {
@@ -88,6 +146,9 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
       redCollege.value = nextRedCollege;
       blueCollege.value = nextBlueCollege;
       resetCounts();
+      if (danmuServiceRef.value) {
+        startViewerCountPolling();
+      }
       return;
     }
     redCollege.value = nextRedCollege;
@@ -177,6 +238,7 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
   }
 
   async function refreshHydrate(options?: { trackLoading?: boolean }) {
+    clearHydrateRefreshTimer();
     const svc = danmuServiceRef.value;
     if (!svc || !currentMatchKey.value) {
       return;
@@ -207,10 +269,22 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     if (!college) {
       return;
     }
+
+    if (side === 'red') {
+      redSupport.value += 1;
+    } else {
+      blueSupport.value += 1;
+    }
+
     try {
       await svc.sendSupportTeam(mk, college);
-      await refreshHydrate();
+      scheduleHydrateRefresh();
     } catch (e) {
+      if (side === 'red') {
+        redSupport.value = Math.max(0, redSupport.value - 1);
+      } else {
+        blueSupport.value = Math.max(0, blueSupport.value - 1);
+      }
       console.warn('[matchEngagement] sendSupport failed', e);
     }
   }
@@ -225,10 +299,37 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     reactions.value = { ...reactions.value, [reactionId]: (reactions.value[reactionId] ?? 0) + 1 };
     try {
       await svc.sendMatchReaction(mk, reactionId);
-      await refreshHydrate();
+      scheduleHydrateRefresh();
     } catch (e) {
+      const nextCount = Math.max(0, (reactions.value[reactionId] ?? 1) - 1);
+      const nextReactions = { ...reactions.value };
+      if (nextCount > 0) {
+        nextReactions[reactionId] = nextCount;
+      } else {
+        delete nextReactions[reactionId];
+      }
+      reactions.value = nextReactions;
       console.warn('[matchEngagement] sendReaction failed', e);
     }
+  }
+
+  async function refreshViewerCount() {
+    const svc = viewerCountServiceRef.value;
+    if (!svc || !currentMatchKey.value) {
+      viewerCount.value = null;
+      return;
+    }
+
+    try {
+      viewerCount.value = await svc.fetchChatRoomCount();
+    } catch (e) {
+      console.warn('[matchEngagement] refreshViewerCount failed', e);
+      viewerCount.value = null;
+    }
+  }
+
+  function stopViewerCountPolling() {
+    clearViewerCountPollTimer();
   }
 
   return {
@@ -240,9 +341,11 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     reactions,
     redPercent,
     bluePercent,
+    viewerCount,
     supportFxEvents,
     hydrateLoading,
     registerDanmuService,
+    registerViewerCountService,
     applyRunningMatch,
     ingestLive,
     hydrateFromHistory,
@@ -250,5 +353,8 @@ export const useMatchEngagementStore = defineStore('matchEngagement', () => {
     enqueueSupportFx,
     sendSupport,
     sendReaction,
+    refreshViewerCount,
+    startViewerCountPolling,
+    stopViewerCountPolling,
   };
 });

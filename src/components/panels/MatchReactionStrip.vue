@@ -7,7 +7,7 @@ import Chip from 'primevue/chip';
 import { computed, onBeforeUnmount, ref } from 'vue';
 
 const engagement = useMatchEngagementStore();
-const { reactions, hydrateLoading } = storeToRefs(engagement);
+const { reactions } = storeToRefs(engagement);
 
 interface ReactionItem {
   id: string;
@@ -67,7 +67,7 @@ function showReactionBurst(id: string, url: string) {
 }
 
 function onReactionClick(item: ReactionItem) {
-  if (isBurstAnimating.value || hydrateLoading.value) {
+  if (isBurstAnimating.value) {
     return;
   }
   bumpReaction(item.id);
@@ -94,6 +94,17 @@ const reactionItems = computed<ReactionItem[]>(() => {
     count: reactions.value[c.id] ?? 0,
   }));
 });
+
+function chipRootClass(count: number) {
+  return [
+    'cursor-pointer shrink-0 select-none !rounded-full !px-2 !py-1.5 sm:!px-2.5 sm:!py-1.5 md:!px-3 md:!py-2 lg:!px-3.5 lg:!py-2',
+    count > 0 ? '!gap-1' : '!justify-center',
+  ].join(' ');
+}
+
+function chipContentClass(count: number) {
+  return ['inline-flex items-center justify-center whitespace-nowrap', count > 0 ? 'gap-1.5' : ''].join(' ');
+}
 </script>
 
 <template>
@@ -104,27 +115,22 @@ const reactionItems = computed<ReactionItem[]>(() => {
       @click="onReactionClick(p)"
       @keydown.enter.prevent="onReactionClick(p)"
       @keydown.space.prevent="onReactionClick(p)"
-      :label="p.count > 0 ? String(p.count) : undefined"
-      :image="p.url"
-      :image-alt="p.id"
+      :class="['shrink-0', isBurstAnimating ? 'pointer-events-none opacity-70' : '']"
       :pt="{
-        root: {
-          class:
-            'cursor-pointer shrink-0 select-none !rounded-full !px-1.5 !py-1 sm:!px-2.5 sm:!py-1.5 md:!px-3 md:!py-2 lg:!px-3.5 lg:!py-2',
-        },
-        image: {
-          class:
-            '!h-4 !w-4 !max-w-none !shrink-0 !object-contain sm:!h-5 sm:!w-5 md:!h-6 md:!w-6 lg:!h-7 lg:!w-7',
-        },
-        label: { class: '!text-[11px] sm:!text-xs md:!text-sm lg:!text-base !leading-none' },
+        root: { class: chipRootClass(p.count) },
       }"
-      :class="[
-        'shrink-0',
-        hydrateLoading || isBurstAnimating ? 'pointer-events-none opacity-70' : '',
-      ]"
       role="button"
       tabindex="0"
-    />
+    >
+      <span :class="chipContentClass(p.count)">
+        <img
+          :src="p.url"
+          :alt="p.id"
+          class="h-5 w-5 max-w-none shrink-0 object-contain sm:h-5 sm:w-5 md:h-6 md:w-6 lg:h-7 lg:w-7"
+        />
+        <span v-if="p.count > 0" class="text-xs leading-none sm:text-xs md:text-sm lg:text-base">{{ p.count }}</span>
+      </span>
+    </Chip>
   </div>
   <Transition
     enter-active-class="transition duration-300 ease-out"

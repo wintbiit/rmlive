@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { DanmuService } from '@/danmu/DanmuService';
-import { useRmDataStore } from '@/stores/rmData';
 import { useDanmuFilterStore } from '@/stores/danmuFilter';
 import { useMatchEngagementStore } from '@/stores/matchEngagement';
+import { useRmDataStore } from '@/stores/rmData';
 import { useUiStore } from '@/stores/ui';
 import { isIFrame, useUserInfoStore } from '@/stores/userInfo';
 import { formatStructuredName, resolveDisplaySchool } from '@/utils/danmuView';
@@ -10,11 +10,11 @@ import Artplayer, { Option } from 'artplayer';
 import artplayerPluginChromecast from 'artplayer-plugin-chromecast';
 import artplayerPluginDanmuku, { type Danmu } from 'artplayer-plugin-danmuku';
 import Hls from 'hls.js/dist/hls.js';
+import { storeToRefs } from 'pinia';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';
 import { useToast } from 'primevue/usetoast';
-import { storeToRefs } from 'pinia';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { DanmuAttributes, DanmuMessage } from '../../types/api';
 import DanmuFilterDialog from '../dialogs/DanmuFilterDialog.vue';
@@ -44,6 +44,7 @@ const danmuEnabledAtLoad = Boolean(uiStore.danmuEnabled);
 const emit = defineEmits<{
   retry: [];
   danmu: [msg: DanmuMessage];
+  danmuReset: [];
 }>();
 
 const container = ref<HTMLDivElement | null>(null);
@@ -98,7 +99,9 @@ const BLUE_SIDE_DANMU_STYLE: TrackDanmuStyle = {
 };
 
 function normalizeSchoolToken(value: string | null | undefined): string {
-  const normalized = String(value ?? '').trim().toLowerCase();
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
   if (!normalized || normalized === '-') {
     return '';
   }
@@ -218,6 +221,7 @@ async function destroyDanmu() {
     danmuService.value = null;
   }
   matchEngagementStore.registerDanmuService(null);
+  matchEngagementStore.registerViewerCountService(null);
 }
 
 function destroyPlayer() {
@@ -320,6 +324,7 @@ async function initDanmu(roomId: string) {
 
   if (currentRoomId === roomId && danmuService.value) {
     matchEngagementStore.registerDanmuService(danmuService.value);
+    matchEngagementStore.registerViewerCountService(danmuService.value);
     void matchEngagementStore.refreshHydrate({ trackLoading: true });
     return;
   }
@@ -328,6 +333,7 @@ async function initDanmu(roomId: string) {
   currentRoomId = roomId;
 
   try {
+    emit('danmuReset');
     await destroyDanmu();
 
     const nextService = new DanmuService({
@@ -373,6 +379,7 @@ async function initDanmu(roomId: string) {
 
     danmuService.value = nextService;
     matchEngagementStore.registerDanmuService(nextService);
+    matchEngagementStore.registerViewerCountService(nextService);
     void matchEngagementStore.refreshHydrate({ trackLoading: true });
   } catch (error) {
     if (connectingService) {

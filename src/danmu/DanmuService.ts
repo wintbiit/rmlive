@@ -1,8 +1,6 @@
 import { useLocalStorage } from '@vueuse/core';
 import { v4 as uuid } from 'uuid';
-import type {
-  EngagementInbound,
-} from '../leancloud/rmliveIm';
+import type { EngagementInbound } from '../leancloud/rmliveIm';
 import {
   encodeTeamTarget,
   MSG_TYPE_MATCH_REACTION,
@@ -23,9 +21,11 @@ import type { DanmuAttributes, DanmuMessage, DanmuMode } from '../types/api';
 
 const APP_ID = import.meta.env.VITE_CHATROOM_APP_ID as string;
 const APP_KEY = import.meta.env.VITE_CHATROOM_APP_KEY as string;
+const ENGAGEMENT_CHATROOM_ID = import.meta.env.VITE_ENGAGEMENT_CHATROOM_ID as string;
 /** Bumped so cached Realtime is recreated with typed-messages plugin. */
 const GLOBAL_REALTIME_KEY = '__rmLiveLeancloudRealtime_v2';
 const GLOBAL_IMCLIENT_KEY = '__rmLiveLeancloudImClient_v2';
+const GLOBAL_ENGAGEMENT_IMCLIENT_KEY = '__rmLiveLeancloudEngagementImClient_v2';
 
 const ENGAGEMENT_PLACEHOLDER_URL =
   (import.meta.env.VITE_ENGAGEMENT_IMAGE_URL as string | undefined) ||
@@ -51,8 +51,7 @@ function parseEngagementQueryLimit(override?: number): number {
 
 function parseEngagementWindowMinutes(): number {
   const raw = import.meta.env.VITE_ENGAGEMENT_QUERY_WINDOW_MINUTES;
-  const n =
-    raw !== undefined && String(raw).trim() !== '' ? Number(raw) : DEFAULT_ENGAGEMENT_WINDOW_MINUTES;
+  const n = raw !== undefined && String(raw).trim() !== '' ? Number(raw) : DEFAULT_ENGAGEMENT_WINDOW_MINUTES;
   if (!Number.isFinite(n)) {
     return DEFAULT_ENGAGEMENT_WINDOW_MINUTES;
   }
@@ -63,6 +62,8 @@ let sharedRealtime: any = null;
 let sharedRealtimeInitPromise: Promise<any> | null = null;
 let sharedImClient: any = null;
 let sharedImClientInitPromise: Promise<any> | null = null;
+let sharedEngagementImClient: any = null;
+let sharedEngagementImClientInitPromise: Promise<any> | null = null;
 
 /** Set after typed-messages plugin is applied; used for instanceof and ImageMessage.TYPE. */
 let lcImageMessageCtor: any = null;
@@ -77,6 +78,10 @@ if (runtimeGlobal[GLOBAL_REALTIME_KEY]) {
 
 if (runtimeGlobal[GLOBAL_IMCLIENT_KEY]) {
   sharedImClient = runtimeGlobal[GLOBAL_IMCLIENT_KEY];
+}
+
+if (runtimeGlobal[GLOBAL_ENGAGEMENT_IMCLIENT_KEY]) {
+  sharedEngagementImClient = runtimeGlobal[GLOBAL_ENGAGEMENT_IMCLIENT_KEY];
 }
 
 async function loadTypedMessagesBundle(): Promise<{ TypedMessagesPlugin: any; ImageMessage: any }> {
@@ -178,6 +183,68 @@ async function getSharedImClient(): Promise<any> {
   return sharedImClientInitPromise;
 }
 
+async function getSharedEngagementImClient(): Promise<any> {
+  if (sharedEngagementImClient) {
+    return sharedEngagementImClient;
+  }
+
+  if (!sharedEngagementImClientInitPromise) {
+    const clientId = useLocalStorage('engagement-im-client-id', uuid(), {
+      serializer: { read: String, write: String },
+    });
+
+    sharedEngagementImClientInitPromise = (async () => {
+      const realtime = await getSharedRealtime();
+      const imClient = await realtime.createIMClient(clientId.value);
+      sharedEngagementImClient = imClient;
+      runtimeGlobal[GLOBAL_ENGAGEMENT_IMCLIENT_KEY] = imClient;
+      return imClient;
+    })().catch((error) => {
+      sharedEngagementImClientInitPromise = null;
+      throw error;
+    });
+  }
+
+  return sharedEngagementImClientInitPromise;
+}
+
+function resolveChatRoomById(imClient: any, chatRoomId: string): Promise<any> {
+  return imClient
+    .getChatRoomQuery()
+    .equalTo('objectId', chatRoomId)
+    .compact(true)
+    .limit(1)
+    .first()
+    .catch((error: unknown) => {
+      console.warn('[Danmu] getChatRoomQuery().compact(true) failed, fallback getConversation:', error);
+      return (imClient as any).getConversation(chatRoomId, true);
+    });
+}
+
+let engagementConversationPromise: Promise<any> | null = null;
+
+async function getEngagementConversation(): Promise<any> {
+  if (!ENGAGEMENT_CHATROOM_ID || !ENGAGEMENT_CHATROOM_ID.trim()) {
+    throw new Error('Missing VITE_ENGAGEMENT_CHATROOM_ID');
+  }
+
+  if (!engagementConversationPromise) {
+    engagementConversationPromise = (async () => {
+      const imClient = await getSharedEngagementImClient();
+      const room = await resolveChatRoomById(imClient, ENGAGEMENT_CHATROOM_ID.trim());
+      if (room?.join) {
+        await room.join();
+      }
+      return room;
+    })().catch((error) => {
+      engagementConversationPromise = null;
+      throw error;
+    });
+  }
+
+  return engagementConversationPromise;
+}
+
 function normalizeDanmuStyleFromAttrs(attrs: Record<string, unknown>): Pick<DanmuMessage, 'mode' | 'color'> {
   const out: Pick<DanmuMessage, 'mode' | 'color'> = {};
   const rawMode = attrs.mode;
@@ -231,12 +298,7 @@ export class DanmuService implements IMatchEngagementGateway {
 
   private async resolveChatRoomInstance(imClient: any, chatRoomId: string): Promise<any> {
     try {
-      const room = await imClient
-        .getChatRoomQuery()
-        .equalTo('objectId', chatRoomId)
-        .compact(true)
-        .limit(1)
-        .first();
+      const room = await imClient.getChatRoomQuery().equalTo('objectId', chatRoomId).compact(true).limit(1).first();
       if (room) {
         return room;
       }
@@ -244,6 +306,35 @@ export class DanmuService implements IMatchEngagementGateway {
       console.warn('[Danmu] getChatRoomQuery().compact(true) failed, fallback getConversation:', e);
     }
     return (imClient as any).getConversation(chatRoomId, true);
+  }
+
+  async fetchChatRoomCount(): Promise<number> {
+    if (!this.conversationInstance?.count) {
+      return 0;
+    }
+
+    try {
+      const count = await this.conversationInstance.count();
+      return Number.isFinite(count) ? count : 0;
+    } catch (error) {
+      console.warn('[Danmu] fetchChatRoomCount failed:', error);
+      return 0;
+    }
+  }
+
+  async fetchEngagementChatRoomCount(): Promise<number> {
+    const conversation = await getEngagementConversation();
+    if (!conversation?.count) {
+      return 0;
+    }
+
+    try {
+      const count = await conversation.count();
+      return Number.isFinite(count) ? count : 0;
+    } catch (error) {
+      console.warn('[Danmu] fetchEngagementChatRoomCount failed:', error);
+      return 0;
+    }
   }
 
   async connect(chatRoomId: string): Promise<void> {
@@ -408,7 +499,8 @@ export class DanmuService implements IMatchEngagementGateway {
    * Limits come from env (unless `limitOverride`); no server-side totals — client sums messages.
    */
   async fetchEngagementHistory(limitOverride?: number): Promise<EngagementInbound[]> {
-    if (!this.conversationInstance?.queryMessages || !lcImageMessageCtor) {
+    const conversation = await getEngagementConversation();
+    if (!conversation?.queryMessages || !lcImageMessageCtor) {
       return [];
     }
     try {
@@ -417,7 +509,7 @@ export class DanmuService implements IMatchEngagementGateway {
       const windowMs = parseEngagementWindowMinutes() * 60 * 1000;
       const startTime = new Date(Date.now() - windowMs);
       const endTime = new Date();
-      const list = await this.conversationInstance.queryMessages({
+      const list = await conversation.queryMessages({
         startTime,
         endTime,
         limit,
@@ -611,10 +703,10 @@ export class DanmuService implements IMatchEngagementGateway {
         id: uuid(),
         timestamp: Date.now(),
         text,
-        username: attrs.username,
-        nickname: attrs.nickname,
-        schoolName: attrs.schoolName,
-        badge: attrs.badge,
+        username: String(attrs.username ?? ''),
+        nickname: String(attrs.nickname ?? ''),
+        schoolName: String(attrs.schoolName ?? ''),
+        badge: String(attrs.badge ?? ''),
         source: 'realtime',
         ...style,
       });
@@ -626,29 +718,27 @@ export class DanmuService implements IMatchEngagementGateway {
 
   /** ImageMessage attrs: support_team + rmlive:msg_for_team (matchKey + TEAM_PAYLOAD_SEP + college). */
   async sendSupportTeam(matchKey: string, collegeName: string): Promise<void> {
-    if (!this.conversationInstance) {
-      throw new Error('Danmu service not connected');
-    }
     if (!lcImageMessageCtor) {
       throw new Error('ImageMessage not ready');
     }
+    const { MessagePriority } = await import('leancloud-realtime');
+    const conversation = await getEngagementConversation();
     const file = await getOrCreateEngagementFile();
     const message = new lcImageMessageCtor(file);
     message.setAttributes({
       [RMLIVE_MSG_TYPE]: MSG_TYPE_SUPPORT_TEAM,
       [RMLIVE_MSG_FOR_TEAM]: encodeTeamTarget(matchKey, collegeName),
     });
-    await this.conversationInstance.send(message);
+    await conversation.send(message, { priority: MessagePriority.LOW });
   }
 
   /** ImageMessage attrs: match_reaction + rmlive:msg_for_match (matchKey) + rmlive:reaction_id. */
   async sendMatchReaction(matchKey: string, reactionId: string): Promise<void> {
-    if (!this.conversationInstance) {
-      throw new Error('Danmu service not connected');
-    }
     if (!lcImageMessageCtor) {
       throw new Error('ImageMessage not ready');
     }
+    const { MessagePriority } = await import('leancloud-realtime');
+    const conversation = await getEngagementConversation();
     const file = await getOrCreateEngagementFile();
     const message = new lcImageMessageCtor(file);
     message.setAttributes({
@@ -656,7 +746,7 @@ export class DanmuService implements IMatchEngagementGateway {
       [RMLIVE_MSG_FOR_MATCH]: matchKey,
       [RMLIVE_REACTION_ID]: reactionId,
     });
-    await this.conversationInstance.send(message);
+    await conversation.send(message, { priority: MessagePriority.LOW });
   }
 
   async disconnect(): Promise<void> {
