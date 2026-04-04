@@ -50,8 +50,13 @@ const emit = defineEmits<{
 const container = ref<HTMLDivElement | null>(null);
 let player: Artplayer | null = null;
 let playerReady = false;
+const isStreamSwitching = ref(false);
 /** Hls instance for current stream; must be torn down before each new customType load and on player destroy. */
 let liveHls: { destroy: () => void } | null = null;
+let hlsMediaRecoveryCount = 0;
+let hlsLastMediaRecoveryAt = 0;
+let currentAppliedStreamUrl: string | null = null;
+let streamSwitchToken = 0;
 let danmukuPlugin: any = null;
 const pendingDanmuQueue: DanmuMessage[] = [];
 const danmuService = ref<DanmuService | null>(null);
@@ -208,6 +213,8 @@ function destroyAttachedHls() {
     liveHls.destroy();
     liveHls = null;
   }
+  hlsMediaRecoveryCount = 0;
+  hlsLastMediaRecoveryAt = 0;
 }
 
 async function exitPipIfNeeded() {
@@ -246,14 +253,51 @@ async function destroyDanmu() {
 
 function destroyPlayer() {
   playerMountToken += 1;
+  streamSwitchToken += 1;
+  isStreamSwitching.value = false;
   destroyAttachedHls();
   if (player) {
     player.destroy(false);
     player = null;
   }
+  currentAppliedStreamUrl = null;
   danmukuPlugin = null;
   playerReady = false;
   pendingDanmuQueue.length = 0;
+}
+
+function waitForVideoPlayable(video: HTMLVideoElement | null, timeoutMs = 2200): Promise<void> {
+  if (!video) {
+    return Promise.resolve();
+  }
+
+  if (video.readyState >= 3 && !video.paused) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('playing', onReady);
+      video.removeEventListener('loadeddata', onReady);
+    };
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const onReady = () => finish();
+
+    video.addEventListener('canplay', onReady, { once: true });
+    video.addEventListener('playing', onReady, { once: true });
+    video.addEventListener('loadeddata', onReady, { once: true });
+
+    setTimeout(() => finish(), timeoutMs);
+  });
 }
 
 function pushDanmuToPlayer(msg: DanmuMessage) {
@@ -564,18 +608,92 @@ async function mountPlayer(url: string) {
       m3u8(video: HTMLVideoElement, m3u8Url: string) {
         destroyAttachedHls();
         if (HlsCtor.isSupported()) {
+          const hlsErrorEvent = (HlsCtor as any).Events?.ERROR ?? 'hlsError';
+          const hlsNetworkErrorType = (HlsCtor as any).ErrorTypes?.NETWORK_ERROR ?? 'networkError';
+          const hlsMediaErrorType = (HlsCtor as any).ErrorTypes?.MEDIA_ERROR ?? 'mediaError';
+          const hlsBufferStalledDetail = (HlsCtor as any).ErrorDetails?.BUFFER_STALLED_ERROR ?? 'bufferStalledError';
+
           const hls = new HlsCtor({
-            lowLatencyMode: true,
+            // Favor stability over ultra-low latency to avoid frequent stalls on mobile networks.
+            lowLatencyMode: false,
             liveDurationInfinity: true,
-            liveSyncMode: 'edge',
-            backBufferLength: 4,
-            maxBufferLength: 6,
-            maxMaxBufferLength: 18,
-            liveSyncDurationCount: 1,
-            maxLiveSyncPlaybackRate: 1.0,
-            liveSyncOnStallIncrease: 0.25,
+            liveSyncMode: 'buffered',
+            backBufferLength: 20,
+            maxBufferLength: 20,
+            maxMaxBufferLength: 40,
+            maxBufferHole: 0.8,
+            liveSyncDurationCount: 3,
+            maxLiveSyncPlaybackRate: 1.2,
+            liveSyncOnStallIncrease: 1,
+            nudgeOffset: 0.12,
+            nudgeMaxRetry: 8,
+            enableWorker: true,
+            startFragPrefetch: true,
+            testBandwidth: false,
+            manifestLoadingMaxRetry: 4,
+            manifestLoadingRetryDelay: 500,
+            manifestLoadingMaxRetryTimeout: 4000,
+            levelLoadingMaxRetry: 5,
+            levelLoadingRetryDelay: 700,
+            levelLoadingMaxRetryTimeout: 6000,
+            fragLoadingMaxRetry: 6,
+            fragLoadingRetryDelay: 800,
+            fragLoadingMaxRetryTimeout: 10000,
             startLevel: -1,
           });
+
+          hls.on(hlsErrorEvent, (_event: unknown, data: any) => {
+            if (!data) {
+              return;
+            }
+
+            if (data.fatal) {
+              if (data.type === hlsNetworkErrorType) {
+                console.warn('[LivePlayer] HLS fatal network error, restart loading', data);
+                hls.startLoad();
+                return;
+              }
+
+              if (data.type === hlsMediaErrorType) {
+                const now = Date.now();
+                if (now - hlsLastMediaRecoveryAt > 15000) {
+                  hlsMediaRecoveryCount = 0;
+                }
+                hlsLastMediaRecoveryAt = now;
+                hlsMediaRecoveryCount += 1;
+
+                if (hlsMediaRecoveryCount <= 2) {
+                  console.warn('[LivePlayer] HLS fatal media error, recover media', data);
+                  hls.recoverMediaError();
+                  return;
+                }
+
+                if (hlsMediaRecoveryCount === 3 && typeof hls.swapAudioCodec === 'function') {
+                  console.warn('[LivePlayer] HLS media error persists, swap audio codec + recover', data);
+                  hls.swapAudioCodec();
+                  hls.recoverMediaError();
+                  return;
+                }
+
+                console.warn('[LivePlayer] HLS media error recovery exhausted, remount stream', data);
+                emit('retry');
+                return;
+              }
+
+              console.warn('[LivePlayer] HLS unrecoverable fatal error, remount stream', data);
+              emit('retry');
+              return;
+            }
+
+            if (data.details === hlsBufferStalledDetail) {
+              try {
+                void video.play();
+              } catch {
+                // ignore auto-play rejection; user can continue manually
+              }
+            }
+          });
+
           liveHls = hls;
           hls.loadSource(m3u8Url);
           hls.attachMedia(video);
@@ -587,6 +705,7 @@ async function mountPlayer(url: string) {
   };
 
   player = new ArtplayerCtor(playerOptions);
+  currentAppliedStreamUrl = url;
   danmukuPlugin = danmuEnabledAtLoad ? (player as any).plugins?.artplayerPluginDanmuku : null;
 
   // Some browsers still require an explicit play attempt after source mount.
@@ -625,18 +744,33 @@ async function applyStreamUrl(url: string) {
 
   markPerformance('rm-player-url-applied');
 
+  if (url === currentAppliedStreamUrl && player && playerReady) {
+    return;
+  }
+
   if (player && playerReady) {
+    const switchToken = ++streamSwitchToken;
+    isStreamSwitching.value = true;
     try {
       await exitPipIfNeeded();
       await player.switchUrl(url);
+      currentAppliedStreamUrl = url;
+      const video = container.value?.querySelector('video') ?? null;
+      await waitForVideoPlayable(video);
       updateQualityControl();
       return;
     } catch (error) {
       console.warn('[LivePlayer] switchUrl failed, remounting player', error);
+    } finally {
+      if (switchToken === streamSwitchToken) {
+        isStreamSwitching.value = false;
+      }
     }
   }
 
+  isStreamSwitching.value = true;
   await mountPlayer(url);
+  isStreamSwitching.value = false;
 }
 
 watch(
@@ -726,6 +860,11 @@ onBeforeUnmount(async () => {
       <Message severity="warn" :closable="false"> 暂未获取到直播流地址 </Message>
     </div>
 
+    <div v-if="isStreamSwitching && !loading && !errorMessage" class="overlay center overlay-soft" aria-live="polite">
+      <ProgressSpinner style="width: 2rem; height: 2rem" strokeWidth="6" />
+      <span class="switching-tip">切换清晰度中...</span>
+    </div>
+
     <div ref="container" class="player-container" />
 
     <DanmuFilterDialog v-if="danmuEnabledAtLoad" v-model:visible="filterDialogVisible" />
@@ -764,6 +903,16 @@ onBeforeUnmount(async () => {
 
 .center {
   text-align: center;
+}
+
+.overlay-soft {
+  z-index: 3;
+  background: linear-gradient(180deg, rgba(9, 16, 33, 0.08), rgba(9, 16, 33, 0.35));
+}
+
+.switching-tip {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .retry-btn {

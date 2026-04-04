@@ -85,7 +85,7 @@ const resultRows = computed(() => {
   return filtered.slice().sort((a, b) => (b.startedAtTs ?? 0) - (a.startedAtTs ?? 0));
 });
 
-const listChunkSize = computed(() => (props.isMobile ? 16 : 24));
+const listChunkSize = computed(() => 10);
 
 // Watch team options and reset selection if it becomes invalid
 watch(teamOptions, (options) => {

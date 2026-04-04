@@ -18,7 +18,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   dateOrder: 'asc',
   incremental: true,
-  chunkSize: 24,
+  chunkSize: 10,
   active: true,
 });
 
@@ -30,6 +30,10 @@ const visibleCount = ref(0);
 const loadSentinel = ref<HTMLDivElement | null>(null);
 let observer: IntersectionObserver | null = null;
 let fallbackScheduled = false;
+let appendScheduled = false;
+let lastAppendAt = 0;
+
+const APPEND_COOLDOWN_MS = 100;
 
 const renderedRows = computed(() => {
   if (!props.incremental) {
@@ -44,11 +48,11 @@ const hasMoreRows = computed(() => props.incremental && visibleCount.value < pro
 const dateGroups = computed(() => groupScheduleRowsByDate(renderedRows.value, props.dateOrder));
 
 function normalizeChunkSize(): number {
-  const parsed = Number(props.chunkSize ?? 24);
+  const parsed = Number(props.chunkSize ?? 10);
   if (!Number.isFinite(parsed)) {
-    return 24;
+    return 10;
   }
-  return Math.max(8, Math.floor(parsed));
+  return Math.max(10, Math.floor(parsed));
 }
 
 function resetVisibleCount() {
@@ -61,13 +65,22 @@ function resetVisibleCount() {
 }
 
 function loadMoreRows() {
-  if (!hasMoreRows.value) {
+  if (!hasMoreRows.value || appendScheduled) {
     return;
   }
 
-  visibleCount.value = Math.min(props.rows.length, visibleCount.value + normalizeChunkSize());
+  const now = performance.now();
+  if (now - lastAppendAt < APPEND_COOLDOWN_MS) {
+    return;
+  }
+
+  appendScheduled = true;
+  lastAppendAt = now;
+  const nextCount = Math.min(props.rows.length, visibleCount.value + normalizeChunkSize());
+  visibleCount.value = nextCount;
   void nextTick(() => {
-    checkViewportAndLoadMore();
+    appendScheduled = false;
+    scheduleViewportCheck();
   });
 }
 
@@ -124,10 +137,6 @@ function scheduleViewportCheck() {
   });
 }
 
-function onWindowViewportChanged() {
-  scheduleViewportCheck();
-}
-
 watch(
   () => props.rows,
   () => {
@@ -154,19 +163,11 @@ watch(hasMoreRows, () => {
 
 onMounted(() => {
   setupObserver();
-  if (typeof window !== 'undefined') {
-    window.addEventListener('scroll', onWindowViewportChanged, { passive: true });
-    window.addEventListener('resize', onWindowViewportChanged, { passive: true });
-  }
   scheduleViewportCheck();
 });
 
 onBeforeUnmount(() => {
   stopObserver();
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('scroll', onWindowViewportChanged);
-    window.removeEventListener('resize', onWindowViewportChanged);
-  }
 });
 
 function onTeamSelect(payload: TeamSelectPayload) {
