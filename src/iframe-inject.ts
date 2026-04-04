@@ -38,11 +38,11 @@ if (existingIframe) {
 }
 
 const iframe = document.createElement('iframe') as HTMLIFrameElement;
-// iframe.src = 'https://rmlive.scutbot.cn';
-iframe.src = `http://localhost:5173`;
+iframe.src = 'https://rmlive.scutrobot.com';
+// iframe.src = `http://localhost:5173`;
 iframe.id = 'rm-live-iframe';
 iframe.allowFullscreen = true;
-iframe.allow = 'autoplay; fullscreen; picture-in-picture; notifications; permissions; periodic-sync';
+iframe.allow = 'autoplay; fullscreen; picture-in-picture; notifications; permissions; periodic-sync; vibrate';
 iframe.style.width = '100%';
 iframe.style.height = '100%';
 iframe.style.border = '0';

@@ -55,15 +55,15 @@ function showReactionBurst(id: string, url: string) {
   burstHideTimer = setTimeout(() => {
     burstVisible.value = false;
     burstHideTimer = null;
-  }, 420);
+  }, 840);
   burstClearTimer = setTimeout(() => {
     burst.value = null;
     burstClearTimer = null;
-  }, 620);
+  }, 1200);
   burstUnlockTimer = setTimeout(() => {
     isBurstAnimating.value = false;
     burstUnlockTimer = null;
-  }, 620);
+  }, 1200);
 }
 
 function onReactionClick(item: ReactionItem) {
@@ -136,7 +136,7 @@ function chipContentClass(count: number) {
     enter-active-class="transition duration-300 ease-out"
     enter-from-class="translate-y-6 scale-50 rotate-[-12deg] opacity-0"
     enter-to-class="-translate-y-1 scale-110 rotate-3 opacity-100"
-    leave-active-class="transition duration-200 ease-in"
+    leave-active-class="transition duration-500 ease-in"
     leave-from-class="-translate-y-3 scale-100 opacity-100"
     leave-to-class="-translate-y-8 scale-90 opacity-0"
   >
